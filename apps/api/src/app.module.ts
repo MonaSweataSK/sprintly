@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import Joi from 'joi';
 import { HealthModule } from './health/health.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
+import { AuthModule } from './auth/auth.module.js';
 
 @Module({
   imports: [
@@ -16,10 +17,19 @@ import { PrismaModule } from './prisma/prisma.module.js';
         DATABASE_URL: Joi.string()
           .uri({ scheme: ['postgres', 'postgresql'] })
           .required(),
+        JWT_SECRET: Joi.string().min(32).required(),
+        OTP_HASH_SECRET: Joi.string().min(32).required(),
+        SMTP_HOST: Joi.string().hostname().allow('').optional(),
+        SMTP_PORT: Joi.number().port().default(587),
+        SMTP_SECURE: Joi.boolean().default(false),
+        SMTP_USER: Joi.string().allow('').optional(),
+        SMTP_PASSWORD: Joi.string().allow('').optional(),
+        SMTP_FROM: Joi.string().email().allow('').optional(),
       }),
     }),
     PrismaModule,
     HealthModule,
+    AuthModule,
   ],
 })
 export class AppModule {}
