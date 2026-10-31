@@ -9,10 +9,12 @@ import {
   RefreshCw,
   Shield,
   TriangleAlert,
+  Users,
 } from 'lucide-react'
 import { useState } from 'react'
 import { Link, Navigate, NavLink, Outlet, Route, Routes, useNavigate } from 'react-router-dom'
 import { LoginPage, VerifyOtpPage } from '@/auth/auth-pages'
+import { MembersPage, TeamsPage } from '@/admin/management-pages'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ApiError, getCurrentUser, getHealth, logout } from '@/lib/api'
@@ -150,19 +152,34 @@ function AppShell() {
             API status
           </NavLink>
           {user?.role === 'ADMIN' && (
-            <NavLink
-              to="/members"
-              className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                  isActive
-                    ? 'bg-accent text-accent-foreground'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                }`
-              }
-            >
-              <Shield aria-hidden="true" size={18} />
-              Members
-            </NavLink>
+            <>
+              <NavLink
+                to="/members"
+                className={({ isActive }) =>
+                  `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'bg-accent text-accent-foreground'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  }`
+                }
+              >
+                <Shield aria-hidden="true" size={18} />
+                Members
+              </NavLink>
+              <NavLink
+                to="/teams"
+                className={({ isActive }) =>
+                  `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'bg-accent text-accent-foreground'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  }`
+                }
+              >
+                <Users aria-hidden="true" size={18} />
+                Teams
+              </NavLink>
+            </>
           )}
         </nav>
         <div className="absolute inset-x-4 bottom-5 rounded-xl border bg-muted/40 p-3">
@@ -276,22 +293,6 @@ function HealthPage() {
   )
 }
 
-function MembersPage() {
-  return (
-    <div className="space-y-6">
-      <div>
-        <p className="text-sm text-muted-foreground">Admin</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Members</h1>
-      </div>
-      <Card>
-        <CardContent className="py-6 text-sm text-muted-foreground">
-          Member management will be implemented in a later step.
-        </CardContent>
-      </Card>
-    </div>
-  )
-}
-
 function NotFoundPage() {
   return (
     <Card>
@@ -314,6 +315,7 @@ export default function App() {
           <Route path="/health" element={<HealthPage />} />
           <Route element={<AdminRoute />}>
             <Route path="/members" element={<MembersPage />} />
+            <Route path="/teams" element={<TeamsPage />} />
           </Route>
           <Route path="*" element={<NotFoundPage />} />
         </Route>

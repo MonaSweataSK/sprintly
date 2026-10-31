@@ -9,6 +9,56 @@ export interface CurrentUser {
   role: 'ADMIN' | 'USER'
 }
 
+export interface Member {
+  id: string
+  name: string
+  email: string
+  role: 'ADMIN' | 'USER'
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface AssigneeOption {
+  id: string
+  name: string
+}
+
+export interface TeamOption {
+  id: string
+  name: string
+}
+
+export interface Team extends TeamOption {
+  description: string | null
+  createdAt: string
+  members: {
+    id: string
+    teamId: string
+    userId: string
+    user: Pick<Member, 'id' | 'name' | 'email' | 'role' | 'isActive'>
+  }[]
+}
+
+export interface MemberInput {
+  name: string
+  email: string
+  role: Member['role']
+}
+
+export interface MemberUpdate {
+  name?: string
+  email?: string
+  role?: Member['role']
+  isActive?: boolean
+}
+
+export interface TeamInput {
+  name: string
+  description?: string
+  memberIds?: string[]
+}
+
 export interface OtpRequestResponse {
   message: string
   expiresInSeconds: number
@@ -121,6 +171,76 @@ export async function getCurrentUser(): Promise<CurrentUser> {
 
 export async function logout(): Promise<void> {
   await apiRequest<{ loggedOut: boolean }>('/auth/logout', { method: 'POST' }, false)
+}
+
+export async function getMembers(): Promise<Member[]> {
+  return apiRequest<Member[]>('/members')
+}
+
+export async function createMember(input: MemberInput): Promise<Member> {
+  return apiRequest<Member>('/members', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export async function updateMember(
+  id: string,
+  input: MemberUpdate,
+): Promise<Member> {
+  return apiRequest<Member>(`/members/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  })
+}
+
+export async function deactivateMember(id: string): Promise<Member> {
+  return apiRequest<Member>(`/members/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+}
+
+export async function permanentlyDeleteMember(id: string): Promise<void> {
+  await apiRequest<{ deleted: boolean }>(
+    `/members/${encodeURIComponent(id)}/permanent`,
+    { method: 'DELETE' },
+  )
+}
+
+export async function getAssigneeOptions(): Promise<AssigneeOption[]> {
+  return apiRequest<AssigneeOption[]>('/assignee-options')
+}
+
+export async function getTeams(): Promise<Team[]> {
+  return apiRequest<Team[]>('/teams')
+}
+
+export async function getTeamOptions(): Promise<TeamOption[]> {
+  return apiRequest<TeamOption[]>('/team-options')
+}
+
+export async function createTeam(input: TeamInput): Promise<Team> {
+  return apiRequest<Team>('/teams', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export async function updateTeam(
+  id: string,
+  input: TeamInput,
+): Promise<Team> {
+  return apiRequest<Team>(`/teams/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  })
+}
+
+export async function deleteTeam(id: string): Promise<void> {
+  await apiRequest<{ deleted: boolean }>(
+    `/teams/${encodeURIComponent(id)}`,
+    { method: 'DELETE' },
+  )
 }
 
 export async function getHealth(): Promise<HealthResponse> {

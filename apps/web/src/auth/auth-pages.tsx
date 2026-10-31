@@ -108,7 +108,7 @@ export function LoginPage() {
     <AuthCard
       icon={<Mail aria-hidden="true" size={22} />}
       title="Sign in to Sprintly"
-      description="Enter your approved work email and we’ll send you a one-time verification code."
+      description="Enter your work email. If your account is approved, we’ll send you a one-time verification code."
     >
       <form
         className="space-y-4"
@@ -144,7 +144,8 @@ export function LoginPage() {
         </Button>
       </form>
       <p className="text-center text-xs leading-5 text-muted-foreground">
-        Access is limited to members approved by your administrator.
+        Don’t receive a code? Check your spam folder. Your email may not be
+        approved yet—contact your administrator to request access.
       </p>
     </AuthCard>
   )
@@ -212,7 +213,8 @@ export function VerifyOtpPage() {
       title="Check your email"
       description={
         <>
-          Enter the 6-digit code sent to <strong className="font-medium text-foreground">{email}</strong>.
+          If this email is approved, a 6-digit code will be sent to{' '}
+          <strong className="font-medium text-foreground">{email}</strong>.
         </>
       }
     >
@@ -259,6 +261,10 @@ export function VerifyOtpPage() {
           Verify and sign in
         </Button>
       </form>
+      <p className="text-center text-xs leading-5 text-muted-foreground">
+        Don’t receive a code? Check your spam folder. Your email may not be
+        approved yet—contact your administrator to request access.
+      </p>
       <div className="flex items-center justify-between text-sm">
         <Link
           to="/login"

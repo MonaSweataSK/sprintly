@@ -13,15 +13,16 @@ enum UserRole {
 }
 
 model User {
-  id             String         @id @default(uuid()) @db.Uuid
-  name           String         @db.VarChar(120)
-  email          String         @unique @db.VarChar(254)
-  role           UserRole       @default(USER)
-  isActive       Boolean        @default(true) @map("is_active")
-  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
-  otpChallenges  OTPChallenge[]
-  sessions       UserSession[]
+  id              String         @id @default(uuid()) @db.Uuid
+  name            String         @db.VarChar(120)
+  email           String         @unique @db.VarChar(254)
+  role            UserRole       @default(USER)
+  isActive        Boolean        @default(true) @map("is_active")
+  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+  otpChallenges   OTPChallenge[]
+  sessions        UserSession[]
+  teamMemberships TeamMember[]
 
   @@map("users")
 }
@@ -52,4 +53,27 @@ model UserSession {
 
   @@index([userId, revokedAt, expiresAt])
   @@map("user_sessions")
+}
+
+model Team {
+  id          String       @id @default(uuid()) @db.Uuid
+  name        String       @unique @db.VarChar(120)
+  description String?      @db.VarChar(500)
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  members     TeamMember[]
+
+  @@map("teams")
+}
+
+model TeamMember {
+  id        String   @id @default(uuid()) @db.Uuid
+  teamId    String   @map("team_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+  @@index([userId])
+  @@map("team_members")
 }

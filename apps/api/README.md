@@ -39,4 +39,27 @@ SameSite cookies. Authenticated requests reload the active user and role from
 PostgreSQL. For admin-only endpoints, use
 `@UseGuards(SessionAuthGuard, RolesGuard)` and `@Roles(UserRole.ADMIN)`.
 
+## Members and teams
+
+Administrators can list/create members at `/api/v1/members`, update a member
+with `PATCH /api/v1/members/:id`, and deactivate one with
+`DELETE /api/v1/members/:id`. Deactivation revokes all active sessions and
+removes the member from team memberships. Admins cannot demote or deactivate
+the last active administrator. Member emails are trimmed and stored in
+lowercase; duplicate addresses return a conflict.
+
+Permanent deletion is a separate Admin-only operation:
+`DELETE /api/v1/members/:id/permanent`. It cannot delete the requesting admin's
+own account or the last active administrator. Database cascades remove the
+member's OTP challenges, sessions, and team memberships.
+
+Administrators can manage teams at `/api/v1/teams` and replace a team's
+membership through `PUT /api/v1/teams/:id/members` with a `memberIds` array,
+or add/remove one member at a time through `POST /api/v1/teams/:id/members`
+and `DELETE /api/v1/teams/:id/members/:memberId`. Team names are unique, and
+only active members may be assigned. Signed-in
+regular users can use `/api/v1/assignee-options` and `/api/v1/team-options`,
+which return minimal selection data without exposing the administrative
+directory.
+
 Run `npm run start:dev --workspace=@sprintly/api` to start the API.
