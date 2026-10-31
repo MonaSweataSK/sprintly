@@ -1,0 +1,27 @@
+{
+  "name": "sprintly",
+  "private": true,
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n API,WEB -c cyan,magenta \"npm run start:dev -w @sprintly/api\" \"npm run dev -w @sprintly/web\"",
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspace=@sprintly/api",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:migrate": "npm run db:migrate --workspace=@sprintly/api",
+    "db:deploy": "npm run db:deploy --workspace=@sprintly/api",
+    "db:generate": "npm run db:generate --workspace=@sprintly/api"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "allowScripts": {
+    "@prisma/client@6.19.3": true,
+    "prisma@6.19.3": true,
+    "@prisma/engines@6.19.3": true,
+    "esbuild@0.28.2": true
+  }
+}
