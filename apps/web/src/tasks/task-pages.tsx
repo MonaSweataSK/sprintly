@@ -6,12 +6,13 @@ import {
   LoaderCircle,
   Plus,
   RefreshCw,
+  Search,
   Trash2,
   X,
   Link2,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { MemberSelector } from '@/components/selectors'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -19,6 +20,7 @@ import { useToast } from '@/components/ui/toast'
 import {
   ApiError,
   getSprints,
+  searchTasks,
   type Task,
   type TaskInput,
   type TaskStatus,
@@ -64,6 +66,13 @@ function TaskError({ message }: { message: string }) {
     <p className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2.5 text-sm text-destructive" role="alert">
       {message}
     </p>
+  )
+}
+
+function isPrerequisiteCompletionError(error: unknown): error is Error {
+  return (
+    error instanceof Error &&
+    error.message.includes('must be completed first')
   )
 }
 
@@ -122,6 +131,7 @@ function TaskForm({
   onSubmit,
   autoSave = false,
   onAutosave,
+  onStatusChange,
 }: {
   initialValue?: TaskInput
   initialSprintId?: string | null
@@ -130,7 +140,8 @@ function TaskForm({
   submitLabel: string
   onSubmit: (input: TaskInput) => void
   autoSave?: boolean
-  onAutosave?: (patch: Partial<TaskInput>) => void
+  onAutosave?: (patch: Partial<TaskInput>, onError?: () => void) => void
+  onStatusChange?: (status: TaskStatus, onError: () => void) => void
 }) {
   const [form, setForm] = useState<TaskInput>(() => ({
     title: initialValue?.title ?? '',
@@ -173,9 +184,6 @@ function TaskForm({
         break
       }
       case 'status':
-        if (form.status !== initialValue?.status) {
-          onAutosave({ status: form.status })
-        }
         break
       case 'startDate': {
         const startDate = form.startDate || null
@@ -280,8 +288,16 @@ function TaskForm({
             className={fieldClassName}
             value={form.status ?? 'TODO'}
             disabled={isPending}
-            onChange={(event) => setForm((value) => ({ ...value, status: event.target.value as TaskStatus }))}
-            onBlur={() => saveField('status')}
+            onChange={(event) => {
+              const status = event.target.value as TaskStatus
+              const previousStatus = form.status ?? 'TODO'
+              setForm((value) => ({ ...value, status }))
+              if (autoSave && status !== previousStatus) {
+                onStatusChange?.(status, () =>
+                  setForm((value) => ({ ...value, status: previousStatus })),
+                )
+              }
+            }}
           >
             {statuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
           </select>
@@ -499,22 +515,41 @@ function taskToInput(task: Task): TaskInput {
 function TaskDependenciesPanel({
   task,
   readOnly,
+  showBlockingBanner,
 }: {
   task: Task
   readOnly: boolean
+  showBlockingBanner: boolean
 }) {
-  const [selectedPrerequisite, setSelectedPrerequisite] = useState('')
+  const [prerequisiteSearch, setPrerequisiteSearch] = useState('')
+  const [debouncedPrerequisiteSearch, setDebouncedPrerequisiteSearch] =
+    useState('')
+  const normalizedPrerequisiteSearch = prerequisiteSearch.trim()
   const dependenciesQuery = useTaskDependencies(task.id)
-  const allTasksQuery = useTasks()
   const addMutation = useAddTaskDependency()
   const removeMutation = useRemoveTaskDependency()
+  const prerequisiteSearchQuery = useQuery({
+    queryKey: ['task-search', debouncedPrerequisiteSearch],
+    queryFn: () => searchTasks(debouncedPrerequisiteSearch),
+    enabled: Boolean(debouncedPrerequisiteSearch),
+    staleTime: 15_000,
+  })
+  useEffect(() => {
+    const timeout = window.setTimeout(
+      () => setDebouncedPrerequisiteSearch(normalizedPrerequisiteSearch),
+      250,
+    )
+    return () => window.clearTimeout(timeout)
+  }, [normalizedPrerequisiteSearch])
+
   const existingPrerequisites = new Set(
     dependenciesQuery.data?.map(({ dependsOnTaskId }) => dependsOnTaskId),
   )
-  const options = allTasksQuery.data?.filter(
-    (candidate) =>
-      candidate.id !== task.id && !existingPrerequisites.has(candidate.id),
-  )
+  const matchingPrerequisites =
+    prerequisiteSearchQuery.data?.filter(
+      (candidate) =>
+        candidate.id !== task.id && !existingPrerequisites.has(candidate.id),
+    ) ?? []
   const blockingDependencies =
     dependenciesQuery.data?.filter(
       ({ dependsOnTask }) => dependsOnTask.status !== 'DONE',
@@ -529,7 +564,7 @@ function TaskDependenciesPanel({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {blockingDependencies.length > 0 && (
+        {showBlockingBanner && blockingDependencies.length > 0 && (
           <div
             className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"
             role="status"
@@ -543,6 +578,7 @@ function TaskDependenciesPanel({
                   <Link
                     className="font-medium underline underline-offset-2"
                     to={`/tasks/${encodeURIComponent(dependsOnTask.taskKey)}`}
+                    state={{ parentTaskKey: task.taskKey }}
                   >
                     {dependsOnTask.taskKey} — {dependsOnTask.title}
                   </Link>
@@ -569,6 +605,7 @@ function TaskDependenciesPanel({
                   <Link
                     className="text-sm font-medium underline-offset-2 hover:underline"
                     to={`/tasks/${encodeURIComponent(dependsOnTask.taskKey)}`}
+                    state={{ parentTaskKey: task.taskKey }}
                   >
                     {dependsOnTask.taskKey} — {dependsOnTask.title}
                   </Link>
@@ -603,57 +640,78 @@ function TaskDependenciesPanel({
           <TaskError message={removeMutation.error.message} />
         )}
 
-        <form
-          className="flex flex-col gap-2 sm:flex-row"
-          onSubmit={(event) => {
-            event.preventDefault()
-            if (!selectedPrerequisite) return
-            addMutation.mutate(
-              { taskId: task.id, dependsOnTaskId: selectedPrerequisite },
-              { onSuccess: () => setSelectedPrerequisite('') },
-            )
-          }}
-        >
-          <select
-            className={fieldClassName}
-            value={selectedPrerequisite}
-            disabled={
-              readOnly ||
-              allTasksQuery.isPending ||
-              allTasksQuery.isError ||
-              dependenciesQuery.isPending ||
-              addMutation.isPending
-            }
-            onChange={(event) => setSelectedPrerequisite(event.target.value)}
-            aria-label="Select prerequisite task"
-          >
-            <option value="">Select a prerequisite task</option>
-            {options?.map((candidate) => (
-              <option key={candidate.id} value={candidate.id}>
-                {candidate.taskKey} — {candidate.title}
-              </option>
-            ))}
-          </select>
-          <Button
-            type="submit"
-            variant="outline"
-            disabled={readOnly || !selectedPrerequisite || addMutation.isPending}
-          >
-            {addMutation.isPending ? (
-              <LoaderCircle
-                aria-hidden="true"
-                className="animate-spin"
-                size={15}
-              />
+        <div className="space-y-2">
+          <label className="relative block">
+            <Search
+              aria-hidden="true"
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+              size={16}
+            />
+            <input
+              className={`${fieldClassName} pl-9`}
+              type="search"
+              value={prerequisiteSearch}
+              disabled={
+                readOnly ||
+                dependenciesQuery.isPending ||
+                addMutation.isPending
+              }
+              onChange={(event) => setPrerequisiteSearch(event.target.value)}
+              placeholder="Search tasks by key or title"
+              aria-label="Search tasks to add as a prerequisite"
+              autoComplete="off"
+            />
+          </label>
+          {debouncedPrerequisiteSearch &&
+            (normalizedPrerequisiteSearch !== debouncedPrerequisiteSearch ||
+            prerequisiteSearchQuery.isPending ? (
+              <p
+                className="flex items-center gap-2 text-sm text-muted-foreground"
+                role="status"
+              >
+                <LoaderCircle
+                  aria-hidden="true"
+                  className="animate-spin"
+                  size={15}
+                />
+                Searching tasks…
+              </p>
+            ) : prerequisiteSearchQuery.isError ? (
+              <TaskError message={prerequisiteSearchQuery.error.message} />
+            ) : matchingPrerequisites.length ? (
+              <ul className="max-h-60 space-y-1 overflow-y-auto rounded-md border p-1">
+                {matchingPrerequisites.map((candidate) => (
+                  <li key={candidate.id}>
+                    <button
+                      type="button"
+                      className="w-full rounded px-3 py-2 text-left hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={readOnly || addMutation.isPending}
+                      onClick={() =>
+                        addMutation.mutate(
+                          {
+                            taskId: task.id,
+                            dependsOnTaskId: candidate.id,
+                          },
+                          { onSuccess: () => setPrerequisiteSearch('') },
+                        )
+                      }
+                    >
+                      <span className="block text-sm font-medium">
+                        {candidate.taskKey} — {candidate.title}
+                      </span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {candidate.sprintName ?? 'Backlog'}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
             ) : (
-              <Plus aria-hidden="true" size={15} />
-            )}
-            Add prerequisite
-          </Button>
-        </form>
-        {allTasksQuery.isError && (
-          <TaskError message={allTasksQuery.error.message} />
-        )}
+              <p className="text-sm text-muted-foreground" role="status">
+                No matching tasks available to add.
+              </p>
+            ))}
+        </div>
         {addMutation.error && <TaskError message={addMutation.error.message} />}
         {readOnly && (
           <p className="text-xs text-muted-foreground">
@@ -667,11 +725,17 @@ function TaskDependenciesPanel({
 
 export function TaskDetailsPage() {
   const { taskKey } = useParams()
+  const location = useLocation()
   const navigate = useNavigate()
   const { showToast } = useToast()
   const taskQuery = useTask(taskKey ?? '')
   const updateMutation = useUpdateTask()
   const deleteMutation = useDeleteTask()
+  const [showPrerequisiteWarning, setShowPrerequisiteWarning] = useState(false)
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' })
+  }, [taskKey])
 
   if (!taskKey) return <Navigate to="/backlog" replace />
   if (taskQuery.isPending) return <p className="flex items-center gap-2 text-sm text-muted-foreground" role="status"><LoaderCircle aria-hidden="true" className="animate-spin" size={16} />Loading task…</p>
@@ -681,12 +745,30 @@ export function TaskDetailsPage() {
   }
 
   const task = taskQuery.data
+  const navigationState: unknown = location.state
+  const parentTaskKey =
+    typeof navigationState === 'object' &&
+    navigationState !== null &&
+    'parentTaskKey' in navigationState &&
+    typeof navigationState.parentTaskKey === 'string'
+      ? navigationState.parentTaskKey
+      : undefined
   return (
     <div className="space-y-6">
-      <Link to={task.sprintId ? `/sprints/${task.sprintId}` : '/backlog'} className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft aria-hidden="true" size={15} />{task.sprint?.name ?? 'Backlog'}</Link>
+      <Link to={parentTaskKey ? `/tasks/${encodeURIComponent(parentTaskKey)}` : task.sprintId ? `/sprints/${task.sprintId}` : '/backlog'} className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft aria-hidden="true" size={15} />{parentTaskKey ?? task.sprint?.name ?? 'Backlog'}</Link>
       <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-sm text-muted-foreground">{task.taskKey}</p><h1 className="mt-1 text-2xl font-semibold tracking-tight">{task.title}</h1></div><Button variant="outline" className="border-destructive/30 text-destructive hover:bg-destructive/5 hover:text-destructive" disabled={deleteMutation.isPending || task.sprint?.status === 'COMPLETED'} onClick={() => { if (window.confirm(`Permanently delete ${task.taskKey}? This cannot be undone.`)) deleteMutation.mutate(task.id, { onSuccess: () => navigate(task.sprintId ? `/sprints/${task.sprintId}` : '/backlog') }) }}>{deleteMutation.isPending ? <LoaderCircle aria-hidden="true" className="animate-spin" size={16} /> : <Trash2 aria-hidden="true" size={16} />}Delete</Button></div>
       {task.sprint?.status === 'COMPLETED' && <TaskError message="This task is read-only while its sprint is completed. Reopen the sprint before editing it." />}
-      {(updateMutation.error || deleteMutation.error) && <TaskError message={updateMutation.error?.message ?? deleteMutation.error?.message ?? 'Task update failed.'} />}
+      {(deleteMutation.error ||
+        (updateMutation.error &&
+          !isPrerequisiteCompletionError(updateMutation.error))) && (
+        <TaskError
+          message={
+            deleteMutation.error?.message ??
+            updateMutation.error?.message ??
+            'Task update failed.'
+          }
+        />
+      )}
       <Card>
         <CardHeader>
           <CardTitle>Task details</CardTitle>
@@ -706,7 +788,24 @@ export function TaskDetailsPage() {
               updateMutation.isPending || task.sprint?.status === 'COMPLETED'
             }
             onSubmit={() => undefined}
-            onAutosave={(input) =>
+            onStatusChange={(status, rollback) => {
+              const isCompleting = status === 'DONE'
+              setShowPrerequisiteWarning(false)
+              updateMutation.mutate(
+                { id: task.id, input: { status } },
+                {
+                  onSuccess: () => setShowPrerequisiteWarning(false),
+                  onError: (error) => {
+                    rollback()
+                    if (isCompleting && isPrerequisiteCompletionError(error)) {
+                      setShowPrerequisiteWarning(true)
+                    }
+                  },
+                },
+              )
+            }}
+            onAutosave={(input, rollback) => {
+              setShowPrerequisiteWarning(false)
               updateMutation.mutate({ id: task.id, input }, {
                 onSuccess: (updatedTask) => {
                   if (
@@ -717,14 +816,18 @@ export function TaskDetailsPage() {
                     navigate(`/sprints/${updatedTask.sprintId}`)
                   }
                 },
+                onError: () => {
+                  rollback?.()
+                },
               })
-            }
+            }}
           />
         </CardContent>
       </Card>
       <TaskDependenciesPanel
         task={task}
         readOnly={task.sprint?.status === 'COMPLETED'}
+        showBlockingBanner={showPrerequisiteWarning}
       />
       <p className="text-xs text-muted-foreground">Created {new Date(task.createdAt).toLocaleString()} by {task.createdBy?.name ?? 'a former member'}.</p>
     </div>
