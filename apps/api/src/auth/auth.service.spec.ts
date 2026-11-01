@@ -1,7 +1,6 @@
 import { UnauthorizedException } from '@nestjs/common';
 import type { ConfigService } from '@nestjs/config';
 import type { JwtService } from '@nestjs/jwt';
-import { UserRole } from '@prisma/client';
 import { createHmac } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthService } from './auth.service.js';
@@ -16,7 +15,7 @@ const user = {
   id: 'user-id',
   name: 'Test Admin',
   email: 'admin@example.com',
-  role: UserRole.ADMIN,
+  role: 'ADMIN',
   isActive: true,
   createdAt: new Date(),
   updatedAt: new Date(),
@@ -195,7 +194,7 @@ describe('AuthService', () => {
       id: user.id,
       name: user.name,
       email: user.email,
-      role: UserRole.ADMIN,
+      role: 'ADMIN',
     });
     expect(result.tokens).toEqual({
       accessToken: 'access-token',
