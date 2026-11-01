@@ -100,4 +100,10 @@ export class TasksController {
   sprintTasks(@Param('id', ParseUUIDPipe) id: string) {
     return this.tasks.list(id);
   }
+
+  @Get('sprints/:id/board')
+  @ApiOperation({ summary: 'Get sprint tasks and required board columns' })
+  board(@Param('id', ParseUUIDPipe) id: string) {
+    return this.tasks.getSprintBoard(id);
+  }
 }

@@ -101,4 +101,11 @@ Dependency graph changes and task status transitions are serialized with a
 PostgreSQL transaction advisory lock; sprint completion takes the same lock
 and checks all active sprint tasks atomically.
 
+The complete sprint board dataset is available at
+`GET /api/v1/sprints/:id/board`. It returns active sprint tasks, active team
+members for assignee columns (including members with no tasks), and any
+outside-team assignees used by those tasks. The React board groups tasks by
+status, assignee, or due-date bucket and applies moves through the standard
+task update endpoint, preserving server-side validation.
+
 Run `npm run start:dev --workspace=@sprintly/api` to start the API.

@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   CalendarDays,
   CheckCircle2,
+  Columns3,
   Clock3,
   LoaderCircle,
   Pencil,
@@ -579,6 +580,12 @@ export function SprintDetailsPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
+          <Button asChild variant="outline">
+            <Link to={`/sprints/${sprint.id}/board`}>
+              <Columns3 aria-hidden="true" size={16} />
+              Open board
+            </Link>
+          </Button>
           <label className="space-y-1.5 text-xs font-medium text-muted-foreground">
             Status
             <select

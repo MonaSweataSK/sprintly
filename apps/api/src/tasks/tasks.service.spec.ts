@@ -53,6 +53,7 @@ describe('TasksService', () => {
     $queryRaw: ReturnType<typeof vi.fn>;
   };
   let prisma: {
+    sprint: { findUnique: ReturnType<typeof vi.fn> };
     task: {
       findFirst: ReturnType<typeof vi.fn>;
       findMany: ReturnType<typeof vi.fn>;
@@ -84,6 +85,9 @@ describe('TasksService', () => {
       $queryRaw: vi.fn().mockResolvedValue([{ id: sprintId }]),
     };
     prisma = {
+      sprint: {
+        findUnique: vi.fn().mockResolvedValue(null),
+      },
       task: {
         findFirst: vi.fn().mockResolvedValue(task),
         findMany: vi.fn().mockResolvedValue([task]),
@@ -174,6 +178,38 @@ describe('TasksService', () => {
         where: { sprintId: null, deletedAt: null },
       }),
     );
+  });
+
+  it('returns team members with empty columns and outside-team assignees', async () => {
+    const outsideUserId = '00000000-0000-4000-8000-000000000005';
+    const teamUserId = '00000000-0000-4000-8000-000000000006';
+    prisma.sprint.findUnique.mockResolvedValueOnce({
+      id: sprintId,
+      name: 'Sprint One',
+      status: 'ACTIVE',
+      teamId: '00000000-0000-4000-8000-000000000007',
+      team: {
+        members: [{ user: { id: teamUserId, name: 'Team member' } }],
+      },
+      tasks: [
+        {
+          ...task,
+          assigneeId: outsideUserId,
+          assignee: { id: outsideUserId, name: 'Outside member', email: 'outside@example.com' },
+          prerequisites: [],
+        },
+      ],
+    });
+
+    const board = await service.getSprintBoard(sprintId);
+
+    expect(board.activeTeamMembers).toEqual([
+      { id: teamUserId, name: 'Team member' },
+    ]);
+    expect(board.outsideTeamAssignees).toEqual([
+      { id: outsideUserId, name: 'Outside member' },
+    ]);
+    expect(board.tasks).toHaveLength(1);
   });
 
   it('rejects a task as its own prerequisite', async () => {

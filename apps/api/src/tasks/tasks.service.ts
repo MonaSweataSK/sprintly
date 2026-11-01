@@ -47,6 +47,81 @@ export class TasksService {
     });
   }
 
+  async getSprintBoard(sprintId: string) {
+    const sprint = await this.prisma.sprint.findUnique({
+      where: { id: sprintId },
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        teamId: true,
+        team: {
+          select: {
+            members: {
+              where: { user: { isActive: true } },
+              select: {
+                user: { select: { id: true, name: true } },
+              },
+              orderBy: { user: { name: 'asc' } },
+            },
+          },
+        },
+        tasks: {
+          where: { deletedAt: null },
+          include: {
+            ...taskInclude,
+            prerequisites: {
+              select: {
+                dependsOnTask: {
+                  select: {
+                    id: true,
+                    taskKey: true,
+                    status: true,
+                    deletedAt: true,
+                  },
+                },
+              },
+            },
+          },
+          orderBy: { taskKey: 'asc' },
+        },
+      },
+    });
+    if (!sprint) throw new NotFoundException('Sprint not found.');
+
+    const teamMemberIds = new Set(
+      sprint.team?.members.map(({ user: member }) => member.id) ?? [],
+    );
+    const assigneeMap = new Map<string, { id: string; name: string }>();
+    for (const task of sprint.tasks) {
+      if (task.assignee) {
+        assigneeMap.set(task.assignee.id, {
+          id: task.assignee.id,
+          name: task.assignee.name,
+        });
+      }
+    }
+
+    const activeTeamMembers = sprint.team
+      ? sprint.team.members.map(({ user: member }) => member)
+      : [...assigneeMap.values()].sort((a, b) => a.name.localeCompare(b.name));
+    const outsideTeamAssignees = [...assigneeMap.values()]
+      .filter(({ id }) => !teamMemberIds.has(id))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    return {
+      sprint: {
+        id: sprint.id,
+        name: sprint.name,
+        status: sprint.status,
+        teamId: sprint.teamId,
+      },
+      tasks: sprint.tasks,
+      activeTeamMembers,
+      outsideTeamAssignees,
+    };
+  }
+
   async getByKey(taskKey: string) {
     const task = await this.prisma.task.findFirst({
       where: { taskKey, deletedAt: null },

@@ -134,6 +134,24 @@ export interface TaskDependency {
   }
 }
 
+export interface SprintBoard {
+  sprint: Pick<Sprint, 'id' | 'name' | 'status' | 'teamId'>
+  tasks: SprintBoardTask[]
+  activeTeamMembers: { id: string; name: string }[]
+  outsideTeamAssignees: { id: string; name: string }[]
+}
+
+export interface SprintBoardTask extends Task {
+  prerequisites: {
+    dependsOnTask: {
+      id: string
+      taskKey: string
+      status: TaskStatus
+      deletedAt: string | null
+    }
+  }[]
+}
+
 export interface OtpRequestResponse {
   message: string
   expiresInSeconds: number
@@ -381,6 +399,12 @@ export async function deleteSprint(id: string): Promise<void> {
 export async function getTasks(sprintId?: string): Promise<Task[]> {
   const query = sprintId ? `?sprintId=${encodeURIComponent(sprintId)}` : ''
   return apiRequest<Task[]>(`/tasks${query}`)
+}
+
+export async function getSprintBoard(sprintId: string): Promise<SprintBoard> {
+  return apiRequest<SprintBoard>(
+    `/sprints/${encodeURIComponent(sprintId)}/board`,
+  )
 }
 
 export async function getBacklogTasks(): Promise<Task[]> {

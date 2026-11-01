@@ -4,6 +4,7 @@ import {
   deleteTask,
   addTaskDependency,
   getBacklogTasks,
+  getSprintBoard,
   getTask,
   getTaskDependencies,
   getTasks,
@@ -23,6 +24,14 @@ export function useBacklogTasks() {
   return useQuery({
     queryKey: ['tasks', 'backlog'],
     queryFn: getBacklogTasks,
+  })
+}
+
+export function useSprintBoard(sprintId: string) {
+  return useQuery({
+    queryKey: ['sprint-board', sprintId],
+    queryFn: () => getSprintBoard(sprintId),
+    enabled: Boolean(sprintId),
   })
 }
 
