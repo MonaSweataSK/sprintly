@@ -62,4 +62,33 @@ regular users can use `/api/v1/assignee-options` and `/api/v1/team-options`,
 which return minimal selection data without exposing the administrative
 directory.
 
+## Sprints
+
+Authenticated members can list, create, view, edit, start, reopen, and delete
+sprints through `/api/v1/sprints`. A sprint may be unassigned or linked to an
+existing team; date ranges may overlap, but an end date cannot precede the
+start date. Sprint status can be changed through
+`PATCH /api/v1/sprints/:id/status` to Planned, Active, or Completed. Completion
+is rejected with unfinished task keys when non-deleted sprint tasks are not
+Done. The dedicated `POST /api/v1/sprints/:id/complete` endpoint applies the
+same validation. Completed sprints are read-only and must be reopened before
+editing or deleting. Deleting a sprint unlinks its tasks to the backlog
+without deleting the tasks.
+
+## Tasks
+
+Authenticated members can create tasks in a sprint or the backlog through
+`POST /api/v1/tasks`. `GET /api/v1/tasks/backlog` lists backlog items,
+`GET /api/v1/sprints/:id/tasks` lists a sprint's active tasks, and
+`GET /api/v1/tasks/:taskKey` returns task details. Update a task with
+`PATCH /api/v1/tasks/:id`; `DELETE /api/v1/tasks/:id` moves it to the trash.
+Task keys are allocated from a PostgreSQL sequence starting at `TASK-101`;
+deleting a task never makes its key available again.
+
+Task titles are required, assignees must be active members, and end dates
+cannot precede start dates. Tasks in completed sprints are read-only until the
+sprint is reopened. Sprint status changes and task mutations coordinate using
+row locks, so a task cannot be added to or moved into a sprint as it is being
+completed.
+
 Run `npm run start:dev --workspace=@sprintly/api` to start the API.

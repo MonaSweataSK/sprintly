@@ -3,6 +3,7 @@ import {
   Activity,
   ArrowUpRight,
   CircleCheck,
+  ClipboardList,
   LayoutDashboard,
   LoaderCircle,
   LogOut,
@@ -15,6 +16,8 @@ import { useState } from 'react'
 import { Link, Navigate, NavLink, Outlet, Route, Routes, useNavigate } from 'react-router-dom'
 import { LoginPage, VerifyOtpPage } from '@/auth/auth-pages'
 import { MembersPage, TeamsPage } from '@/admin/management-pages'
+import { SprintDashboardPage, SprintDetailsPage } from '@/sprints/sprint-pages'
+import { BacklogPage, TaskDetailsPage } from '@/tasks/task-pages'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ApiError, getCurrentUser, getHealth, logout } from '@/lib/api'
@@ -136,7 +139,20 @@ function AppShell() {
             }
           >
             <LayoutDashboard aria-hidden="true" size={18} />
-            Overview
+            Sprints
+          </NavLink>
+          <NavLink
+            to="/backlog"
+            className={({ isActive }) =>
+              `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                isActive
+                  ? 'bg-accent text-accent-foreground'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              }`
+            }
+          >
+            <ClipboardList aria-hidden="true" size={18} />
+            Backlog
           </NavLink>
           <NavLink
             to="/health"
@@ -259,26 +275,7 @@ function HealthStatus() {
 }
 
 function DashboardPage() {
-  const { data: user } = useQuery({
-    queryKey: ['auth', 'me'],
-    queryFn: getCurrentUser,
-  })
-
-  return (
-    <div className="space-y-8">
-      <div>
-        <p className="text-sm text-muted-foreground">Workspace</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-          Welcome, {user?.name}
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-          You’re signed in to Sprintly. Your approved account and current role
-          are verified by the backend.
-        </p>
-      </div>
-      <HealthStatus />
-    </div>
-  )
+  return <SprintDashboardPage />
 }
 
 function HealthPage() {
@@ -312,6 +309,10 @@ export default function App() {
         <Route element={<AppShell />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/sprints" element={<SprintDashboardPage />} />
+          <Route path="/sprints/:id" element={<SprintDetailsPage />} />
+          <Route path="/backlog" element={<BacklogPage />} />
+          <Route path="/tasks/:taskKey" element={<TaskDetailsPage />} />
           <Route path="/health" element={<HealthPage />} />
           <Route element={<AdminRoute />}>
             <Route path="/members" element={<MembersPage />} />

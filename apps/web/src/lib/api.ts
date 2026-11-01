@@ -59,6 +59,61 @@ export interface TeamInput {
   memberIds?: string[]
 }
 
+export type SprintStatus = 'PLANNED' | 'ACTIVE' | 'COMPLETED'
+
+export interface Sprint {
+  id: string
+  name: string
+  description: string | null
+  teamId: string | null
+  startDate: string
+  endDate: string
+  status: SprintStatus
+  team: TeamOption | null
+  createdBy: { id: string; name: string } | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface SprintInput {
+  name: string
+  description?: string
+  teamId?: string | null
+  startDate: string
+  endDate: string
+}
+
+export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'IN_REVIEW' | 'DONE'
+
+export interface Task {
+  id: string
+  taskKey: string
+  title: string
+  description: string | null
+  assigneeId: string | null
+  sprintId: string | null
+  startDate: string | null
+  endDate: string | null
+  status: TaskStatus
+  createdById: string | null
+  createdAt: string
+  updatedAt: string
+  deletedAt: string | null
+  assignee: Pick<Member, 'id' | 'name' | 'email'> | null
+  sprint: Pick<Sprint, 'id' | 'name' | 'status'> | null
+  createdBy: { id: string; name: string } | null
+}
+
+export interface TaskInput {
+  title: string
+  description?: string | null
+  assigneeId?: string | null
+  sprintId?: string | null
+  startDate?: string | null
+  endDate?: string | null
+  status?: TaskStatus
+}
+
 export interface OtpRequestResponse {
   message: string
   expiresInSeconds: number
@@ -241,6 +296,102 @@ export async function deleteTeam(id: string): Promise<void> {
     `/teams/${encodeURIComponent(id)}`,
     { method: 'DELETE' },
   )
+}
+
+export async function getSprints(): Promise<Sprint[]> {
+  return apiRequest<Sprint[]>('/sprints')
+}
+
+export async function getSprint(id: string): Promise<Sprint> {
+  return apiRequest<Sprint>(`/sprints/${encodeURIComponent(id)}`)
+}
+
+export async function createSprint(input: SprintInput): Promise<Sprint> {
+  return apiRequest<Sprint>('/sprints', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export async function updateSprint(
+  id: string,
+  input: Partial<SprintInput>,
+): Promise<Sprint> {
+  return apiRequest<Sprint>(`/sprints/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  })
+}
+
+export async function startSprint(id: string): Promise<Sprint> {
+  return apiRequest<Sprint>(`/sprints/${encodeURIComponent(id)}/start`, {
+    method: 'POST',
+  })
+}
+
+export async function setSprintStatus(
+  id: string,
+  status: SprintStatus,
+): Promise<Sprint> {
+  return apiRequest<Sprint>(`/sprints/${encodeURIComponent(id)}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status }),
+  })
+}
+
+export async function planSprint(id: string): Promise<Sprint> {
+  return apiRequest<Sprint>(`/sprints/${encodeURIComponent(id)}/plan`, {
+    method: 'POST',
+  })
+}
+
+export async function reopenSprint(id: string): Promise<Sprint> {
+  return apiRequest<Sprint>(`/sprints/${encodeURIComponent(id)}/reopen`, {
+    method: 'POST',
+  })
+}
+
+export async function deleteSprint(id: string): Promise<void> {
+  await apiRequest<{ deleted: boolean }>(
+    `/sprints/${encodeURIComponent(id)}`,
+    { method: 'DELETE' },
+  )
+}
+
+export async function getTasks(sprintId?: string): Promise<Task[]> {
+  const query = sprintId ? `?sprintId=${encodeURIComponent(sprintId)}` : ''
+  return apiRequest<Task[]>(`/tasks${query}`)
+}
+
+export async function getBacklogTasks(): Promise<Task[]> {
+  return apiRequest<Task[]>('/tasks/backlog')
+}
+
+export async function getTask(taskKey: string): Promise<Task> {
+  return apiRequest<Task>(`/tasks/${encodeURIComponent(taskKey)}`)
+}
+
+export async function createTask(input: TaskInput): Promise<Task> {
+  return apiRequest<Task>('/tasks', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export async function updateTask(
+  id: string,
+  input: Partial<TaskInput>,
+): Promise<Task> {
+  return apiRequest<Task>(`/tasks/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  })
+}
+
+export async function deleteTask(id: string): Promise<void> {
+  await apiRequest<{ deleted: boolean }>(`/tasks/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
 }
 
 export async function getHealth(): Promise<HealthResponse> {

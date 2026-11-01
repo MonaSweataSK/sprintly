@@ -20,6 +20,15 @@
   --radius-sm: 0.25rem;
 }
 
+@keyframes sprint-slide-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
 @layer base {
   * {
     border-color: var(--color-border);
