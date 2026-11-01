@@ -3,6 +3,8 @@ import {
   KeyboardSensor,
   PointerSensor,
   closestCorners,
+  pointerWithin,
+  rectIntersection,
   useDraggable,
   useDroppable,
   useSensor,
@@ -18,7 +20,7 @@ import {
   LoaderCircle,
   RefreshCw,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState, type MouseEvent } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -180,8 +182,14 @@ function columnsFor(
 }
 
 function BoardTaskCard({ task, disabled }: { task: SprintBoardTask; disabled: boolean }) {
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } =
-    useDraggable({ id: task.id, disabled })
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    isDragging,
+    transform,
+  } = useDraggable({ id: task.id, disabled })
   const blockedBy = task.prerequisites.filter(
     ({ dependsOnTask }) =>
       dependsOnTask.deletedAt !== null || dependsOnTask.status !== 'DONE',
@@ -190,7 +198,17 @@ function BoardTaskCard({ task, disabled }: { task: SprintBoardTask; disabled: bo
   return (
     <div
       ref={setNodeRef}
-      className={isDragging ? 'opacity-40' : ''}
+      className={`relative touch-none cursor-grab active:cursor-grabbing ${
+        isDragging ? 'z-10 opacity-90 shadow-lg' : ''
+      }`}
+      style={
+        transform
+          ? {
+              transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+            }
+          : undefined
+      }
+      {...listeners}
     >
       <Card className="bg-white shadow-sm">
         <CardContent className="space-y-3 p-3">
@@ -199,10 +217,9 @@ function BoardTaskCard({ task, disabled }: { task: SprintBoardTask; disabled: bo
             <button
               ref={setActivatorNodeRef}
               type="button"
-              className="mt-0.5 cursor-grab rounded p-1 text-muted-foreground hover:bg-muted active:cursor-grabbing"
+              className="mt-0.5 cursor-grab touch-none rounded p-1 text-muted-foreground hover:bg-muted active:cursor-grabbing"
               aria-label={`Drag ${task.taskKey}`}
               {...attributes}
-              {...listeners}
             >
               <GripVertical aria-hidden="true" size={16} />
             </button>
@@ -244,9 +261,11 @@ function BoardTaskCard({ task, disabled }: { task: SprintBoardTask; disabled: bo
 function BoardColumnView({
   column,
   disabled,
+  onTaskClickCapture,
 }: {
   column: BoardColumn
   disabled: boolean
+  onTaskClickCapture: (event: MouseEvent<HTMLElement>) => void
 }) {
   const { isOver, setNodeRef } = useDroppable({
     id: column.id,
@@ -257,6 +276,7 @@ function BoardColumnView({
   return (
     <section
       ref={setNodeRef}
+      onClickCapture={onTaskClickCapture}
       aria-label={`${column.title}, ${column.tasks.length} tasks`}
       className={`flex min-h-72 w-72 shrink-0 flex-col rounded-xl border p-3 transition-colors ${
         isOver ? 'border-primary bg-accent/60' : 'bg-muted/40'
@@ -306,12 +326,24 @@ export function SprintBoardPage() {
   const [groupBy, setGroupBy] = useState<GroupBy>('status')
   const [sortBy, setSortBy] = useState<SortBy>('taskKey')
   const [mutationError, setMutationError] = useState<string>()
+  const dragClickSuppressionTimeout = useRef<number | undefined>(undefined)
+  const draggedTaskRef = useRef(false)
   const boardQuery = useSprintBoard(id ?? '')
   const boardKey = ['sprint-board', id]
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor),
   )
+
+  function scheduleDragClickSuppressionReset() {
+    if (dragClickSuppressionTimeout.current !== undefined) {
+      window.clearTimeout(dragClickSuppressionTimeout.current)
+    }
+    dragClickSuppressionTimeout.current = window.setTimeout(() => {
+      draggedTaskRef.current = false
+      dragClickSuppressionTimeout.current = undefined
+    }, 250)
+  }
 
   const updateMutation = useMutation({
     mutationFn: ({ taskId, patch }: { taskId: string; patch: Partial<TaskInput> }) =>
@@ -393,6 +425,7 @@ export function SprintBoardPage() {
   const isReadOnly = board.sprint.status === 'COMPLETED'
 
   function handleDragEnd(event: DragEndEvent) {
+    scheduleDragClickSuppressionReset()
     if (isReadOnly || !event.over) return
     const task = board.tasks.find(({ id: taskId }) => taskId === event.active.id)
     const column = columns.find(({ id: columnId }) => columnId === event.over?.id)
@@ -466,13 +499,27 @@ export function SprintBoardPage() {
 
       <DndContext
         sensors={sensors}
+        onDragStart={() => {
+          if (dragClickSuppressionTimeout.current !== undefined) {
+            window.clearTimeout(dragClickSuppressionTimeout.current)
+            dragClickSuppressionTimeout.current = undefined
+          }
+          draggedTaskRef.current = true
+        }}
+        onDragCancel={scheduleDragClickSuppressionReset}
         collisionDetection={(args) =>
-          closestCorners({
-            ...args,
-            droppableContainers: args.droppableContainers.filter(
+          (() => {
+            const columns = args.droppableContainers.filter(
               ({ data }) => data.current?.type === 'sprint-board-column',
-            ),
-          })
+            )
+            const columnArgs = { ...args, droppableContainers: columns }
+            const pointerCollisions = pointerWithin(columnArgs)
+            if (pointerCollisions.length) return pointerCollisions
+            const intersections = rectIntersection(columnArgs)
+            return intersections.length
+              ? intersections
+              : closestCorners(columnArgs)
+          })()
         }
         onDragEnd={handleDragEnd}
       >
@@ -483,6 +530,16 @@ export function SprintBoardPage() {
                 key={column.id}
                 column={column}
                 disabled={isReadOnly || updateMutation.isPending}
+                onTaskClickCapture={(event) => {
+                  if (!draggedTaskRef.current) return
+                  event.preventDefault()
+                  event.stopPropagation()
+                  draggedTaskRef.current = false
+                  if (dragClickSuppressionTimeout.current !== undefined) {
+                    window.clearTimeout(dragClickSuppressionTimeout.current)
+                    dragClickSuppressionTimeout.current = undefined
+                  }
+                }}
               />
             ))}
           </div>
