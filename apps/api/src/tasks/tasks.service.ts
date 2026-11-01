@@ -32,7 +32,6 @@ export class TasksService {
   list(sprintId?: string) {
     return this.prisma.task.findMany({
       where: {
-        deletedAt: null,
         ...(sprintId ? { sprintId } : {}),
       },
       include: taskInclude,
@@ -42,7 +41,7 @@ export class TasksService {
 
   listBacklog() {
     return this.prisma.task.findMany({
-      where: { sprintId: null, deletedAt: null },
+      where: { sprintId: null },
       include: taskInclude,
       orderBy: [{ createdAt: 'desc' }, { taskKey: 'asc' }],
     });
@@ -72,8 +71,7 @@ export class TasksService {
         sprint."name" AS "sprintName"
       FROM "tasks" task
       LEFT JOIN "sprints" sprint ON sprint."id" = task."sprint_id"
-      WHERE task."deleted_at" IS NULL
-        AND (
+      WHERE (
           task."task_key" ILIKE ${containsPattern} ESCAPE '!'
           OR task."title" ILIKE ${containsPattern} ESCAPE '!'
           OR task."description" ILIKE ${containsPattern} ESCAPE '!'
@@ -101,7 +99,7 @@ export class TasksService {
     });
     if (!sprint) throw new NotFoundException('Sprint not found.');
 
-    const where = { sprintId, deletedAt: null };
+    const where = { sprintId };
     const [total, tasks] = await Promise.all([
       this.prisma.task.count({ where }),
       this.prisma.task.findMany({
@@ -149,7 +147,6 @@ export class TasksService {
           },
         },
         tasks: {
-          where: { deletedAt: null },
           include: {
             ...taskInclude,
             prerequisites: {
@@ -159,7 +156,6 @@ export class TasksService {
                     id: true,
                     taskKey: true,
                     status: true,
-                    deletedAt: true,
                   },
                 },
               },
@@ -206,7 +202,7 @@ export class TasksService {
 
   async getByKey(taskKey: string) {
     const task = await this.prisma.task.findFirst({
-      where: { taskKey, deletedAt: null },
+      where: { taskKey },
       include: taskInclude,
     });
     if (!task) throw new NotFoundException('Task not found.');
@@ -215,7 +211,7 @@ export class TasksService {
 
   async listDependencies(id: string) {
     const task = await this.prisma.task.findFirst({
-      where: { id, deletedAt: null },
+      where: { id },
       select: { id: true },
     });
     if (!task) throw new NotFoundException('Task not found.');
@@ -229,7 +225,6 @@ export class TasksService {
             taskKey: true,
             title: true,
             status: true,
-            deletedAt: true,
             sprintId: true,
           },
         },
@@ -253,10 +248,9 @@ export class TasksService {
             id: true,
             taskKey: true,
             status: true,
-            deletedAt: true,
           },
         });
-        if (!prerequisite || prerequisite.deletedAt) {
+        if (!prerequisite) {
           throw new NotFoundException('Active prerequisite task not found.');
         }
         if (dependent.status === 'DONE' && prerequisite.status !== 'DONE') {
@@ -294,7 +288,6 @@ export class TasksService {
                 taskKey: true,
                 title: true,
                 status: true,
-                deletedAt: true,
                 sprintId: true,
               },
             },
@@ -361,7 +354,7 @@ export class TasksService {
         await this.lockDependencyGraph(transaction);
       }
       const snapshot = await transaction.task.findFirst({
-        where: { id, deletedAt: null },
+        where: { id },
         select: { sprintId: true, status: true, taskKey: true },
       });
       if (!snapshot) throw new NotFoundException('Task not found.');
@@ -421,11 +414,11 @@ export class TasksService {
     });
   }
 
-  async softDelete(id: string) {
+  async delete(id: string) {
     return this.prisma.$transaction(async (transaction) => {
       await this.lockDependencyGraph(transaction);
       const snapshot = await transaction.task.findFirst({
-        where: { id, deletedAt: null },
+        where: { id },
         select: { sprintId: true, taskKey: true },
       });
       if (!snapshot) throw new NotFoundException('Task not found.');
@@ -439,13 +432,23 @@ export class TasksService {
         );
       }
       await this.assertSprintsEditable(transaction, sprintIds);
-      await this.assertNoDoneDependents(transaction, id, snapshot.taskKey);
 
-      await transaction.task.update({
-        where: { id },
-        data: { deletedAt: new Date() },
+      const dependents = await transaction.taskDependency.findMany({
+        where: {
+          dependsOnTaskId: id,
+        },
+        select: { task: { select: { taskKey: true } } },
+        orderBy: { task: { taskKey: 'asc' } },
       });
-      return { deleted: true };
+      const taskKeys = dependents.map(({ task }) => task.taskKey);
+      if (taskKeys.length) {
+        throw new ConflictException(
+          `Cannot delete ${snapshot.taskKey}. Tasks ${taskKeys.join(', ')} depend on it. Remove those dependencies or delete the dependent tasks first.`,
+        );
+      }
+
+      await transaction.task.delete({ where: { id } });
+      return { deleted: true, taskKey: snapshot.taskKey };
     });
   }
 
@@ -454,7 +457,7 @@ export class TasksService {
     id: string,
   ) {
     const snapshot = await transaction.task.findFirst({
-      where: { id, deletedAt: null },
+      where: { id },
       select: { sprintId: true },
     });
     if (!snapshot) throw new NotFoundException('Task not found.');
@@ -479,15 +482,14 @@ export class TasksService {
       where: { taskId },
       select: {
         dependsOnTask: {
-          select: { taskKey: true, status: true, deletedAt: true },
+          select: { taskKey: true, status: true },
         },
       },
       orderBy: { dependsOnTask: { taskKey: 'asc' } },
     });
     const taskKeys = blocking
       .filter(
-        ({ dependsOnTask }) =>
-          dependsOnTask.deletedAt !== null || dependsOnTask.status !== 'DONE',
+        ({ dependsOnTask }) => dependsOnTask.status !== 'DONE',
       )
       .map(({ dependsOnTask }) => dependsOnTask.taskKey);
     if (taskKeys.length) {
@@ -505,7 +507,7 @@ export class TasksService {
     const dependents = await transaction.taskDependency.findMany({
       where: {
         dependsOnTaskId: taskId,
-        task: { status: 'DONE', deletedAt: null },
+        task: { status: 'DONE' },
       },
       select: { task: { select: { taskKey: true } } },
       orderBy: { task: { taskKey: 'asc' } },
@@ -559,10 +561,10 @@ export class TasksService {
     id: string,
   ) {
     await transaction.$queryRaw`
-      SELECT "id" FROM "tasks" WHERE "id" = ${id}::uuid AND "deleted_at" IS NULL FOR UPDATE
+      SELECT "id" FROM "tasks" WHERE "id" = ${id}::uuid FOR UPDATE
     `;
     const task = await transaction.task.findFirst({
-      where: { id, deletedAt: null },
+      where: { id },
       select: {
         id: true,
         sprintId: true,

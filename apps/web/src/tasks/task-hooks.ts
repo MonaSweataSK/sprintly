@@ -74,6 +74,7 @@ function useInvalidateTasks() {
       queryClient.invalidateQueries({ queryKey: ['sprint-tasks'] }),
       queryClient.invalidateQueries({ queryKey: ['sprint-board'] }),
       queryClient.invalidateQueries({ queryKey: ['sprints'] }),
+      queryClient.invalidateQueries({ queryKey: ['task-search'] }),
     ])
   }
 }

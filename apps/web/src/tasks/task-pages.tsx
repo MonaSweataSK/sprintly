@@ -517,8 +517,7 @@ function TaskDependenciesPanel({
   )
   const blockingDependencies =
     dependenciesQuery.data?.filter(
-      ({ dependsOnTask }) =>
-        dependsOnTask.deletedAt !== null || dependsOnTask.status !== 'DONE',
+      ({ dependsOnTask }) => dependsOnTask.status !== 'DONE',
     ) ?? []
 
   return (
@@ -541,18 +540,12 @@ function TaskDependenciesPanel({
             <ul className="mt-2 list-inside list-disc space-y-1">
               {blockingDependencies.map(({ id, dependsOnTask }) => (
                 <li key={id}>
-                  {dependsOnTask.deletedAt ? (
-                    <span>
-                      {dependsOnTask.taskKey} — {dependsOnTask.title} (deleted)
-                    </span>
-                  ) : (
-                    <Link
-                      className="font-medium underline underline-offset-2"
-                      to={`/tasks/${encodeURIComponent(dependsOnTask.taskKey)}`}
-                    >
-                      {dependsOnTask.taskKey} — {dependsOnTask.title}
-                    </Link>
-                  )}
+                  <Link
+                    className="font-medium underline underline-offset-2"
+                    to={`/tasks/${encodeURIComponent(dependsOnTask.taskKey)}`}
+                  >
+                    {dependsOnTask.taskKey} — {dependsOnTask.title}
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -573,22 +566,14 @@ function TaskDependenciesPanel({
                 className="flex flex-wrap items-center justify-between gap-3 rounded-md border px-3 py-2.5"
               >
                 <span className="min-w-0">
-                  {dependsOnTask.deletedAt ? (
-                    <span className="text-sm font-medium">
-                      {dependsOnTask.taskKey} — {dependsOnTask.title} (deleted)
-                    </span>
-                  ) : (
-                    <Link
-                      className="text-sm font-medium underline-offset-2 hover:underline"
-                      to={`/tasks/${encodeURIComponent(dependsOnTask.taskKey)}`}
-                    >
-                      {dependsOnTask.taskKey} — {dependsOnTask.title}
-                    </Link>
-                  )}
+                  <Link
+                    className="text-sm font-medium underline-offset-2 hover:underline"
+                    to={`/tasks/${encodeURIComponent(dependsOnTask.taskKey)}`}
+                  >
+                    {dependsOnTask.taskKey} — {dependsOnTask.title}
+                  </Link>
                   <span className="ml-2 text-xs text-muted-foreground">
-                    {dependsOnTask.deletedAt
-                      ? 'Deleted'
-                      : statusName(dependsOnTask.status)}
+                    {statusName(dependsOnTask.status)}
                   </span>
                 </span>
                 <Button
@@ -699,7 +684,7 @@ export function TaskDetailsPage() {
   return (
     <div className="space-y-6">
       <Link to={task.sprintId ? `/sprints/${task.sprintId}` : '/backlog'} className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft aria-hidden="true" size={15} />{task.sprint?.name ?? 'Backlog'}</Link>
-      <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-sm text-muted-foreground">{task.taskKey}</p><h1 className="mt-1 text-2xl font-semibold tracking-tight">{task.title}</h1></div><Button variant="outline" className="border-destructive/30 text-destructive hover:bg-destructive/5 hover:text-destructive" disabled={deleteMutation.isPending || task.sprint?.status === 'COMPLETED'} onClick={() => { if (window.confirm(`Move ${task.taskKey} to the trash?`)) deleteMutation.mutate(task.id, { onSuccess: () => navigate(task.sprintId ? `/sprints/${task.sprintId}` : '/backlog') }) }}>{deleteMutation.isPending ? <LoaderCircle aria-hidden="true" className="animate-spin" size={16} /> : <Trash2 aria-hidden="true" size={16} />}Delete</Button></div>
+      <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-sm text-muted-foreground">{task.taskKey}</p><h1 className="mt-1 text-2xl font-semibold tracking-tight">{task.title}</h1></div><Button variant="outline" className="border-destructive/30 text-destructive hover:bg-destructive/5 hover:text-destructive" disabled={deleteMutation.isPending || task.sprint?.status === 'COMPLETED'} onClick={() => { if (window.confirm(`Permanently delete ${task.taskKey}? This cannot be undone.`)) deleteMutation.mutate(task.id, { onSuccess: () => navigate(task.sprintId ? `/sprints/${task.sprintId}` : '/backlog') }) }}>{deleteMutation.isPending ? <LoaderCircle aria-hidden="true" className="animate-spin" size={16} /> : <Trash2 aria-hidden="true" size={16} />}Delete</Button></div>
       {task.sprint?.status === 'COMPLETED' && <TaskError message="This task is read-only while its sprint is completed. Reopen the sprint before editing it." />}
       {(updateMutation.error || deleteMutation.error) && <TaskError message={updateMutation.error?.message ?? deleteMutation.error?.message ?? 'Task update failed.'} />}
       <Card>

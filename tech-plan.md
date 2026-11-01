@@ -109,9 +109,7 @@ Two roles are supported.
   Assign tasks                     Yes    Yes
   Move tasks                       Yes    Yes
   Manage dependencies              Yes    Yes
-  Soft-delete tasks                Yes    Yes
-  Restore tasks                    Yes    Yes
-  Permanently delete tasks         Yes     No
+  Permanently delete tasks         Yes    Yes
 
 The user role is stored in PostgreSQL.
 
@@ -194,7 +192,6 @@ sprints belonging to the same team.
   `created_by`    Task creator
   `created_at`    Creation timestamp
   `updated_at`    Last modification
-  `deleted_at`    Soft-deletion timestamp
 
 Task keys are unique and must never be reused.
 
@@ -243,7 +240,7 @@ For example, `TASK-102` depends on `TASK-101`.
 
 ### Sprint Completion
 
-Before completing a sprint, NestJS checks all non-deleted tasks
+Before completing a sprint, NestJS checks all tasks
 belonging to it.
 
 ``` text
@@ -383,42 +380,26 @@ Possible results:
 -   Implement authentication API
 -   Build login and OTP verification endpoints
 
-The backend searches all non-deleted tasks, including backlog tasks.
+The backend searches all tasks, including backlog tasks.
 Results appear in a dropdown, and clicking a title opens the
 corresponding task details page.
 
 Search does not filter the currently open Board or List.
 
 Implementation: use PostgreSQL case-insensitive partial matching, return at
-most eight ranked suggestions, and debounce API requests in React. The API
-excludes soft-deleted tasks and the global header supports keyboard navigation.
+most eight ranked suggestions, and debounce API requests in React. The global
+header supports keyboard navigation.
 The current four-task local dataset measured 0.061 ms with `EXPLAIN ANALYZE`,
 so add trigram indexes only after re-measuring against representative larger
 data; suggestions do not change the active Board or List task set.
 
 ## 12. Task Deletion
 
-### Soft Delete
-
-When a user deletes a task, NestJS sets `deleted_at` rather than
-removing the row.
-
-The task disappears from normal views and appears in Trash.
-
-### Restore
-
-Clearing `deleted_at` restores the task, subject to sprint and
-dependency validations.
-
-### Permanent Delete
-
-Admin-only.
-
-The task must first be soft-deleted. Before deleting it permanently,
-NestJS checks whether other active tasks depend on it.
-
-If dependencies exist, the operation is rejected until they are
-resolved.
+Authenticated users hard-delete tasks through `DELETE /tasks/:id`. The API
+checks that the task's sprint is editable and rejects deletion while other
+tasks depend on it, reporting the dependent task keys. Deleting a task removes
+its own dependency relationships through database cascades. Task keys come
+from a PostgreSQL sequence and are never reused.
 
 ## 13. API Endpoints
 
@@ -447,9 +428,6 @@ Base URL: `/api/v1`
   Dependencies          `/tasks/:id/dependencies`                 GET, POST
   Remove dependency     `/tasks/:id/dependencies/:dependencyId`   DELETE
   Global search         `/tasks/search?q=...`                     GET
-  Trash                 `/tasks/trash`                            GET
-  Restore task          `/tasks/:id/restore`                      POST
-  Permanent delete      `/tasks/:id/permanent`                    DELETE
 
 All protected endpoints require a valid session. Admin-only endpoints
 must check the current database role.
@@ -467,7 +445,6 @@ must check the current database role.
   `/tasks/:taskKey`      Task details
   `/members`             Admin member management
   `/teams`               Admin team management
-  `/trash`               Deleted tasks
 
 ## 15. Testing Requirements
 
@@ -484,7 +461,7 @@ The following functionality must be tested before release:
 -   Sprint completion with unfinished tasks.
 -   Concurrent task changes during sprint completion.
 -   Global search and task navigation.
--   Task deletion and restoration.
+-   Task hard deletion and dependency protections.
 
 Use Jest for NestJS tests, Vitest for React unit tests, and Playwright
 for end-to-end flows.
@@ -505,7 +482,7 @@ integrations remain outside the current scope.
 The MVP is complete when an approved member can authenticate through
 OTP, remain logged in across browser restarts, create and manage sprints
 and tasks, use Board and List views, manage dependencies, search
-globally, and delete or restore tasks---with all role restrictions and
+globally, and hard-delete tasks---with all role restrictions and
 business rules enforced by NestJS and all data persisted in PostgreSQL.
 
 **Final technical direction:** Build a NestJS modular monolith, use

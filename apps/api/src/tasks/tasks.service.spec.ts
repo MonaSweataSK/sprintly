@@ -27,7 +27,6 @@ const task = {
   createdById: user.id,
   createdAt: new Date(),
   updatedAt: new Date(),
-  deletedAt: null,
   assignee: null,
   sprint: { id: sprintId, name: 'Sprint One', status: 'ACTIVE' },
   createdBy: { id: user.id, name: user.name },
@@ -41,6 +40,7 @@ describe('TasksService', () => {
       findMany: ReturnType<typeof vi.fn>;
       create: ReturnType<typeof vi.fn>;
       update: ReturnType<typeof vi.fn>;
+      delete: ReturnType<typeof vi.fn>;
     };
     taskDependency: {
       findMany: ReturnType<typeof vi.fn>;
@@ -71,6 +71,7 @@ describe('TasksService', () => {
         findMany: vi.fn().mockResolvedValue([]),
         create: vi.fn().mockResolvedValue(task),
         update: vi.fn().mockResolvedValue(task),
+        delete: vi.fn().mockResolvedValue(task),
       },
       taskDependency: {
         findMany: vi.fn().mockResolvedValue([]),
@@ -174,17 +175,17 @@ describe('TasksService', () => {
     expect(transaction.task.create).not.toHaveBeenCalled();
   });
 
-  it('lists only active tasks in the backlog', async () => {
+  it('lists backlog tasks', async () => {
     await service.listBacklog();
 
     expect(prisma.task.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { sprintId: null, deletedAt: null },
+        where: { sprintId: null },
       }),
     );
   });
 
-  it('searches active tasks across sprint and backlog with bounded ranked results', async () => {
+  it('searches tasks across sprint and backlog with bounded ranked results', async () => {
     prisma.$queryRaw.mockResolvedValueOnce([
       {
         id: task.id,
@@ -208,12 +209,12 @@ describe('TasksService', () => {
     ]);
     expect(prisma.$queryRaw).toHaveBeenCalledOnce();
     const queryFragments = prisma.$queryRaw.mock.calls[0][0].join('?');
-    expect(queryFragments).toContain('"deleted_at" IS NULL');
+    expect(queryFragments).not.toContain('"deleted_at"');
     expect(queryFragments).toContain('LIMIT 8');
     expect(queryFragments).toContain('ORDER BY');
   });
 
-  it('returns a stable, paginated list of active tasks for an existing sprint', async () => {
+  it('returns a stable, paginated list of tasks for an existing sprint', async () => {
     prisma.sprint.findUnique.mockResolvedValueOnce({
       id: sprintId,
       name: 'Sprint One',
@@ -234,14 +235,14 @@ describe('TasksService', () => {
     });
     expect(prisma.task.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { sprintId, deletedAt: null },
+        where: { sprintId },
         orderBy: [{ title: 'desc' }, { taskKey: 'asc' }, { id: 'asc' }],
         skip: 10,
         take: 10,
       }),
     );
     expect(prisma.task.count).toHaveBeenCalledWith({
-      where: { sprintId, deletedAt: null },
+      where: { sprintId },
     });
   });
 
@@ -318,7 +319,6 @@ describe('TasksService', () => {
         id: '00000000-0000-4000-8000-000000000004',
         taskKey: 'TASK-100',
         status: 'DONE',
-        deletedAt: null,
       });
 
     await service.addDependency(
@@ -336,7 +336,7 @@ describe('TasksService', () => {
     );
   });
 
-  it('lists prerequisites including soft-deleted prerequisite records', async () => {
+  it('lists task prerequisites', async () => {
     prisma.taskDependency.findMany.mockResolvedValueOnce([
       {
         id: 'dependency-id',
@@ -345,9 +345,8 @@ describe('TasksService', () => {
         dependsOnTask: {
           id: '00000000-0000-4000-8000-000000000004',
           taskKey: 'TASK-099',
-          title: 'Deleted prerequisite',
+          title: 'Prerequisite',
           status: 'DONE',
-          deletedAt: new Date(),
           sprintId: null,
         },
       },
@@ -355,7 +354,7 @@ describe('TasksService', () => {
 
     const dependencies = await service.listDependencies(taskId);
 
-    expect(dependencies[0].dependsOnTask.deletedAt).toBeInstanceOf(Date);
+    expect(dependencies[0].dependsOnTask.taskKey).toBe('TASK-099');
     expect(prisma.taskDependency.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { taskId } }),
     );
@@ -370,7 +369,6 @@ describe('TasksService', () => {
         id: '00000000-0000-4000-8000-000000000004',
         taskKey: 'TASK-100',
         status: 'TODO',
-        deletedAt: null,
       });
 
     await expect(
@@ -396,7 +394,6 @@ describe('TasksService', () => {
         dependsOnTask: {
           taskKey: 'TASK-100',
           status: 'IN_PROGRESS',
-          deletedAt: null,
         },
       },
     ]);
@@ -405,22 +402,6 @@ describe('TasksService', () => {
       'TASK-100 must be completed first',
     );
     expect(transaction.task.update).not.toHaveBeenCalled();
-  });
-
-  it('keeps deleted prerequisites blocking task completion', async () => {
-    transaction.taskDependency.findMany.mockResolvedValueOnce([
-      {
-        dependsOnTask: {
-          taskKey: 'TASK-099',
-          status: 'DONE',
-          deletedAt: new Date(),
-        },
-      },
-    ]);
-
-    await expect(service.update(taskId, { status: 'DONE' })).rejects.toThrow(
-      'TASK-099 must be completed first',
-    );
   });
 
   it('prevents reopening a prerequisite used by a completed task', async () => {
@@ -437,12 +418,34 @@ describe('TasksService', () => {
     expect(transaction.task.update).not.toHaveBeenCalled();
   });
 
-  it('prevents deleting a prerequisite used by a completed task', async () => {
+  it('hard deletes a task and returns its non-reusable public key', async () => {
+    transaction.task.findFirst
+      .mockReset()
+      .mockResolvedValueOnce({ sprintId: null, taskKey: task.taskKey })
+      .mockResolvedValueOnce({
+        id: taskId,
+        sprintId: null,
+        status: 'TODO',
+        taskKey: task.taskKey,
+      });
+
+    await expect(service.delete(taskId)).resolves.toEqual({
+      deleted: true,
+      taskKey: task.taskKey,
+    });
+    expect(transaction.task.delete).toHaveBeenCalledWith({
+      where: { id: taskId },
+    });
+  });
+
+  it('blocks deleting a task while another task depends on it', async () => {
     transaction.taskDependency.findMany.mockResolvedValueOnce([
       { task: { taskKey: 'TASK-105' } },
     ]);
 
-    await expect(service.softDelete(taskId)).rejects.toThrow('TASK-105');
-    expect(transaction.task.update).not.toHaveBeenCalled();
+    await expect(service.delete(taskId)).rejects.toThrow(
+      'TASK-105 depend on it',
+    );
+    expect(transaction.task.delete).not.toHaveBeenCalled();
   });
 });

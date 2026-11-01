@@ -37,7 +37,6 @@ export class SprintsService {
       include: {
         ...sprintInclude,
         tasks: {
-          where: { deletedAt: null },
           select: { taskKey: true, status: true },
           orderBy: { taskKey: 'asc' },
         },
@@ -152,7 +151,6 @@ export class SprintsService {
               where: {
                 sprintId: id,
                 status: { not: 'DONE' },
-                deletedAt: null,
               },
               select: { taskKey: true },
               orderBy: { taskKey: 'asc' },

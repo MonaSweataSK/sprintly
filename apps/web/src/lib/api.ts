@@ -103,7 +103,6 @@ export interface Task {
   createdById: string | null
   createdAt: string
   updatedAt: string
-  deletedAt: string | null
   assignee: Pick<Member, 'id' | 'name' | 'email'> | null
   sprint: Pick<Sprint, 'id' | 'name' | 'status'> | null
   createdBy: { id: string; name: string } | null
@@ -138,7 +137,6 @@ export interface TaskDependency {
     taskKey: string
     title: string
     status: TaskStatus
-    deletedAt: string | null
     sprintId: string | null
   }
 }
@@ -156,7 +154,6 @@ export interface SprintBoardTask extends Task {
       id: string
       taskKey: string
       status: TaskStatus
-      deletedAt: string | null
     }
   }[]
 }

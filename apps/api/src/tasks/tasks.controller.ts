@@ -34,13 +34,13 @@ export class TasksController {
   constructor(private readonly tasks: TasksService) {}
 
   @Get('tasks/backlog')
-  @ApiOperation({ summary: 'List active tasks that are not in a sprint' })
+  @ApiOperation({ summary: 'List tasks that are not in a sprint' })
   backlog() {
     return this.tasks.listBacklog();
   }
 
   @Get('tasks')
-  @ApiOperation({ summary: 'List active tasks, optionally by sprint' })
+  @ApiOperation({ summary: 'List tasks, optionally by sprint' })
   list(
     @Query('sprintId', new ParseUUIDPipe({ optional: true }))
     sprintId?: string,
@@ -49,7 +49,7 @@ export class TasksController {
   }
 
   @Get('tasks/search')
-  @ApiOperation({ summary: 'Search active tasks across all sprints and backlog' })
+  @ApiOperation({ summary: 'Search tasks across all sprints and backlog' })
   @ApiQuery({
     name: 'q',
     required: true,
@@ -85,9 +85,9 @@ export class TasksController {
   }
 
   @Delete('tasks/:id')
-  @ApiOperation({ summary: 'Move a task to the trash' })
+  @ApiOperation({ summary: 'Permanently delete a task' })
   delete(@Param('id', ParseUUIDPipe) id: string) {
-    return this.tasks.softDelete(id);
+    return this.tasks.delete(id);
   }
 
   @Get('tasks/:id/dependencies')
@@ -115,7 +115,7 @@ export class TasksController {
   }
 
   @Get('sprints/:id/tasks')
-  @ApiOperation({ summary: 'List paginated active tasks for a sprint' })
+  @ApiOperation({ summary: 'List paginated tasks for a sprint' })
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
   @ApiQuery({
     name: 'pageSize',

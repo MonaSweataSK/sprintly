@@ -69,7 +69,7 @@ sprints through `/api/v1/sprints`. A sprint may be unassigned or linked to an
 existing team; date ranges may overlap, but an end date cannot precede the
 start date. Sprint status can be changed through
 `PATCH /api/v1/sprints/:id/status` to Planned, Active, or Completed. Completion
-is rejected with unfinished task keys when non-deleted sprint tasks are not
+is rejected with unfinished task keys when sprint tasks are not
 Done. The dedicated `POST /api/v1/sprints/:id/complete` endpoint applies the
 same validation. Completed sprints are read-only and must be reopened before
 editing or deleting. Deleting a sprint unlinks its tasks to the backlog
@@ -79,14 +79,14 @@ without deleting the tasks.
 
 Authenticated members can create tasks in a sprint or the backlog through
 `POST /api/v1/tasks`. `GET /api/v1/tasks/backlog` lists backlog items.
-`GET /api/v1/sprints/:id/tasks` returns a paginated active task list and accepts
+`GET /api/v1/sprints/:id/tasks` returns a paginated task list and accepts
 `page` (default `1`), `pageSize` (default `20`, maximum `100`), `sortBy`
 (`taskKey`, `title`, `startDate`, `endDate`, `createdAt`, or `updatedAt`), and
 `sortOrder` (`asc` or `desc`). Results include sprint metadata, task rows, and
-pagination totals; deleted tasks are excluded, matching board visibility. Sorts
+pagination totals, matching board visibility. Sorts
 use task key and ID as stable tie-breakers. `GET /api/v1/tasks/:taskKey` returns
 task details. Update a task with
-`PATCH /api/v1/tasks/:id`; `DELETE /api/v1/tasks/:id` moves it to the trash.
+`PATCH /api/v1/tasks/:id`; `DELETE /api/v1/tasks/:id` permanently deletes it.
 Task keys are allocated from a PostgreSQL sequence starting at `TASK-101`;
 deleting a task never makes its key available again.
 
@@ -96,12 +96,17 @@ sprint is reopened. Sprint status changes and task mutations coordinate using
 row locks, so a task cannot be added to or moved into a sprint as it is being
 completed.
 
+Task deletion is available to any authenticated member and is permanent. The
+API rejects deletion while another task depends on it and reports dependent
+task keys; deleting a task removes its own dependency links through database
+cascades. Recreating a task allocates a new task key.
+
 Manage prerequisites with `GET /api/v1/tasks/:id/dependencies`,
 `POST /api/v1/tasks/:id/dependencies` using `{ "dependsOnTaskId": "..." }`,
 and `DELETE /api/v1/tasks/:id/dependencies/:dependencyId`. Dependencies may
 span sprints. Self-dependencies and cycles are rejected. A task cannot become
-Done while any prerequisite is unfinished or deleted, and a prerequisite
-cannot be reopened or deleted while an active Done task depends on it.
+Done while any prerequisite is unfinished. A prerequisite cannot be reopened
+while a completed task depends on it, or deleted while any task depends on it.
 Dependency graph changes and task status transitions are serialized with a
 PostgreSQL transaction advisory lock; sprint completion takes the same lock
 and checks all active sprint tasks atomically.
@@ -115,9 +120,9 @@ task update endpoint, preserving server-side validation.
 
 Global task suggestions are available to authenticated users at
 `GET /api/v1/tasks/search?q=...`. Search matches task key, title, and
-description case-insensitively across all sprints and backlog, excludes
-soft-deleted tasks, ranks exact/prefix matches ahead of substring matches, and
-returns at most eight results. Queries must contain 1–100 characters. The
+description case-insensitively across all sprints and backlog, ranks
+exact/prefix matches ahead of substring matches, and returns at most eight
+results. Queries must contain 1–100 characters. The
 current local dataset is small, and `EXPLAIN ANALYZE` measured the ranked
 partial-match query at 0.061 ms on four active tasks; no additional search
 indexes are justified at this scale. Re-measure with representative production

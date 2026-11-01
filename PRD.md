@@ -25,7 +25,7 @@ The application provides two primary task interfaces:
 - Support drag-and-drop updates across all board grouping modes.
 - Enforce task dependency completion requirements.
 - Prevent sprint completion when unfinished tasks exist.
-- Provide recoverable task deletion.
+- Allow users to permanently delete tasks.
 - Persist all application data.
 - Restrict access to Admin-approved email addresses through email OTP verification and authenticated sessions.
 
@@ -47,16 +47,14 @@ Admins can:
 - Manage task dependencies.
 - Use Board and List views.
 - Search tasks globally by ID, title, or description.
-- Soft-delete and restore tasks.
-- Permanently delete eligible tasks.
+- Permanently delete tasks that have no dependent tasks.
 
 ### 2.2 User
 Users can:
 - Access the application after verifying their approved email address using a one-time password (OTP).
 - Create, edit, and delete sprints.
 - Assign sprints to existing teams.
-- Create, edit, and soft-delete tasks.
-- Restore tasks.
+- Create, edit, and permanently delete tasks.
 - Assign tasks to active members.
 - Update task statuses and dates.
 - Manage task dependencies.
@@ -169,7 +167,7 @@ The application uses Admin-approved email addresses and one-time passwords (OTP)
 - **SPR-BR-06:** A task belongs to at most one sprint.
 - **SPR-BR-07:** Deleting a sprint moves its tasks to the unassigned backlog rather than deleting them.
 - **SPR-BR-08: Sprint Completion Validation**
-  A sprint can transition from Active to Completed only when all non-deleted tasks currently belonging to that sprint have status `Done`.
+  A sprint can transition from Active to Completed only when all tasks currently belonging to that sprint have status `Done`.
   If one or more tasks are unfinished:
   - The sprint must remain `Active`.
   - A warning must be displayed.
@@ -231,8 +229,7 @@ The application uses Admin-approved email addresses and one-time passwords (OTP)
 - Change start and end dates.
 - Move tasks between eligible sprints.
 - Add and remove dependencies.
-- Soft-delete and restore tasks.
-- Permanently delete tasks (Admin only).
+- Permanently delete tasks.
 
 ### 4.4 Business Rules
 - Every task has a unique, immutable identifier.
@@ -266,7 +263,7 @@ A task can transition to `Done` only if all its prerequisite tasks have status `
 
 *Warning:* `"Cannot complete TASK-103. TASK-102 must be completed first."`
 
-Reopening a prerequisite from `Done` is blocked if another completed task depends on it. Soft-deleted prerequisites remain blocking until restored or explicitly removed.
+Reopening a prerequisite from `Done` is blocked while a completed task depends on it. Deleting a prerequisite is blocked while any task depends on it.
 
 ---
 
@@ -369,14 +366,13 @@ A single search input must be accessible from the application-level navigation, 
 - Task Description
 
 #### Search behavior:
-- Search covers all non-deleted tasks across all sprints, including backlog tasks, not just the currently selected sprint.
+- Search covers all tasks across all sprints, including backlog tasks, not just the currently selected sprint.
 - Matching tasks appear in a dropdown anchored to the global search input as the user types.
 - Each dropdown result displays the task ID/key and title; a brief description excerpt may be displayed to explain a description match.
 - Clicking a task's title opens that task's detail page, including when it belongs to a different sprint.
 - If a query matches no tasks, the dropdown displays *"No tasks found"*.
 - Empty queries close the results dropdown.
 - Search is case-insensitive and supports partial matches in all three fields.
-- Soft-deleted tasks are excluded from normal search results.
 - Global search results do not filter, remove, or change cards/rows in Board or List views.
 - The dropdown must be keyboard accessible (arrow-key navigation, Enter to open, Escape to close).
 
@@ -414,28 +410,14 @@ Supported sort fields:
 - **Requirement ID:** DEL-01
 - **Priority:** P0
 
-### 9.1 Soft Deletion
+### 9.1 Hard Deletion
 *Available to Admins and Users.*
-- Task is marked as deleted.
-- Task disappears from active views.
-- Task remains in storage.
-- Task can be restored.
-
-### 9.2 Restoration
-*Available to Admins and Users.*
-- Restores the task.
-- Retains task dependencies.
-- Returns the task to eligible views.
-
-### 9.3 Permanent Deletion
-*Admin only.*
-- Performed through Trash.
 - Requires explicit confirmation.
 - Permanently removes the task record.
-- Deletes associated dependency relationships.
+- Removes the task's dependency relationships.
 - Cannot be undone.
-
-*Permanent deletion is blocked when active tasks still depend on the deleted task.*
+- Deletion is blocked while other tasks depend on the task being deleted.
+- Public task keys are never reused; a recreated task receives a new key.
 
 ---
 
@@ -468,9 +450,6 @@ Admin-only member directory and membership controls.
 ### 10.7 Team Management
 Admin-only team administration.
 
-### 10.8 Trash
-Task restoration and Admin-only permanent deletion.
-
 ---
 
 ## 11. MVP Acceptance Criteria
@@ -494,20 +473,19 @@ Task restoration and Admin-only permanent deletion.
 | **AC-15** | Sprint completed | Task editing locked |
 | **AC-16** | Reopen sprint | Editing enabled |
 | **AC-17** | Switch Board/List | Selected sprint retained |
-| **AC-18** | Soft-delete task | Moved to Trash |
-| **AC-19** | Restore task | Returned to active views |
-| **AC-20** | Admin permanently deletes task | Removed |
-| **AC-21** | User permanently deletes task | Denied |
-| **AC-22** | Refresh application | Data retained |
-| **AC-23** | Group sprint by assignee | All active team members shown, including empty columns |
-| **AC-24** | Search globally by ID/title/description | Matching tasks shown in dropdown |
-| **AC-25** | Click search result title | Correct task detail page opens |
-| **AC-26** | Search while viewing Board/List | Visible view tasks remain unchanged |
-| **AC-27** | Approved member enters correct OTP | Authenticated session created |
-| **AC-28** | Unapproved or inactive email requests access | No authenticated access granted |
-| **AC-29** | OTP is expired, invalid, or reused | Verification rejected |
-| **AC-30** | User impersonates Admin by entering Admin email | Access denied without mailbox verification |
-| **AC-31** | Member is deactivated after login | Existing session no longer grants access |
+| **AC-18** | Delete a task without dependents | Removed and no longer appears |
+| **AC-19** | Delete a task with dependents | Rejected with dependent task keys |
+| **AC-20** | Recreate a deleted task | Receives a new public task key |
+| **AC-21** | Refresh application | Data retained |
+| **AC-22** | Group sprint by assignee | All active team members shown, including empty columns |
+| **AC-23** | Search globally by ID/title/description | Matching tasks shown in dropdown |
+| **AC-24** | Click search result title | Correct task detail page opens |
+| **AC-25** | Search while viewing Board/List | Visible view tasks remain unchanged |
+| **AC-26** | Approved member enters correct OTP | Authenticated session created |
+| **AC-27** | Unapproved or inactive email requests access | No authenticated access granted |
+| **AC-28** | OTP is expired, invalid, or reused | Verification rejected |
+| **AC-29** | User impersonates Admin by entering Admin email | Access denied without mailbox verification |
+| **AC-30** | Member is deactivated after login | Existing session no longer grants access |
 | **AC-32** | User logs out | Session revoked and cookie cleared; OTP needed again |
 | **AC-33** | User closes and reopens browser | Session remains valid without OTP |
 | **AC-34** | OTP age exceeds 5 minutes (default) | OTP rejected |
@@ -536,7 +514,6 @@ Task restoration and Admin-only permanent deletion.
 - Allowed file types are configurable.
 - Only authenticated, authorized users can access attachments.
 - Files are stored in external object storage; metadata is persisted in PostgreSQL.
-- Soft-deleted tasks retain attachments for restoration.
 - Permanent task deletion removes attachment metadata and schedules file cleanup.
 
 ### 12.3 Release Boundary

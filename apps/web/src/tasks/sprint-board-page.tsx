@@ -193,7 +193,7 @@ function BoardTaskCard({ task, disabled }: { task: SprintBoardTask; disabled: bo
   } = useDraggable({ id: task.id, disabled })
   const blockedBy = task.prerequisites.filter(
     ({ dependsOnTask }) =>
-      dependsOnTask.deletedAt !== null || dependsOnTask.status !== 'DONE',
+      dependsOnTask.status !== 'DONE',
   )
 
   return (
