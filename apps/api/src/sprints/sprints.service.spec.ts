@@ -29,6 +29,7 @@ const sprint = {
   updatedAt: new Date(),
   team: null,
   createdBy: { id: user.id, name: user.name },
+  tasks: [],
 };
 
 describe('SprintsService', () => {
@@ -258,6 +259,26 @@ describe('SprintsService', () => {
 
     await expect(service.get(sprint.id)).rejects.toBeInstanceOf(
       NotFoundException,
+    );
+  });
+
+  it('returns completion progress for active sprint tasks', async () => {
+    prisma.sprint.findUnique.mockResolvedValue({
+      ...sprint,
+      tasks: [
+        { taskKey: 'TASK-101', status: 'DONE' },
+        { taskKey: 'TASK-102', status: 'TODO' },
+      ],
+    });
+
+    await expect(service.get(sprint.id)).resolves.toEqual(
+      expect.objectContaining({
+        taskProgress: {
+          total: 2,
+          done: 1,
+          unfinishedTaskKeys: ['TASK-102'],
+        },
+      }),
     );
   });
 });

@@ -73,6 +73,11 @@ export interface Sprint {
   createdBy: { id: string; name: string } | null
   createdAt: string
   updatedAt: string
+  taskProgress?: {
+    total: number
+    done: number
+    unfinishedTaskKeys: string[]
+  }
 }
 
 export interface SprintInput {
@@ -112,6 +117,21 @@ export interface TaskInput {
   startDate?: string | null
   endDate?: string | null
   status?: TaskStatus
+}
+
+export interface TaskDependency {
+  id: string
+  taskId: string
+  dependsOnTaskId: string
+  createdAt: string
+  dependsOnTask: {
+    id: string
+    taskKey: string
+    title: string
+    status: TaskStatus
+    deletedAt: string | null
+    sprintId: string | null
+  }
 }
 
 export interface OtpRequestResponse {
@@ -392,6 +412,37 @@ export async function deleteTask(id: string): Promise<void> {
   await apiRequest<{ deleted: boolean }>(`/tasks/${encodeURIComponent(id)}`, {
     method: 'DELETE',
   })
+}
+
+export async function getTaskDependencies(
+  taskId: string,
+): Promise<TaskDependency[]> {
+  return apiRequest<TaskDependency[]>(
+    `/tasks/${encodeURIComponent(taskId)}/dependencies`,
+  )
+}
+
+export async function addTaskDependency(
+  taskId: string,
+  dependsOnTaskId: string,
+): Promise<TaskDependency> {
+  return apiRequest<TaskDependency>(
+    `/tasks/${encodeURIComponent(taskId)}/dependencies`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ dependsOnTaskId }),
+    },
+  )
+}
+
+export async function removeTaskDependency(
+  taskId: string,
+  dependencyId: string,
+): Promise<void> {
+  await apiRequest<{ removed: boolean }>(
+    `/tasks/${encodeURIComponent(taskId)}/dependencies/${encodeURIComponent(dependencyId)}`,
+    { method: 'DELETE' },
+  )
 }
 
 export async function getHealth(): Promise<HealthResponse> {

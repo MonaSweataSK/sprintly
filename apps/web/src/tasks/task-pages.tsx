@@ -8,12 +8,14 @@ import {
   RefreshCw,
   Trash2,
   X,
+  Link2,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import { MemberSelector } from '@/components/selectors'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useToast } from '@/components/ui/toast'
 import {
   ApiError,
   getSprints,
@@ -21,7 +23,17 @@ import {
   type TaskInput,
   type TaskStatus,
 } from '@/lib/api'
-import { useBacklogTasks, useCreateTask, useDeleteTask, useTask, useTasks, useUpdateTask } from './task-hooks'
+import {
+  useAddTaskDependency,
+  useBacklogTasks,
+  useCreateTask,
+  useDeleteTask,
+  useRemoveTaskDependency,
+  useTask,
+  useTaskDependencies,
+  useTasks,
+  useUpdateTask,
+} from './task-hooks'
 
 const fieldClassName =
   'h-10 w-full rounded-md border bg-white px-3 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60'
@@ -353,7 +365,7 @@ function TaskCollection({
 }
 
 export function BacklogPage() {
-  const navigate = useNavigate()
+  const { showToast } = useToast()
   const tasksQuery = useBacklogTasks()
   const [isCreating, setIsCreating] = useState(false)
 
@@ -367,7 +379,10 @@ export function BacklogPage() {
       {isCreating && (
         <TaskCreateDrawer
           onClose={() => setIsCreating(false)}
-          onCreated={(task) => navigate(`/tasks/${encodeURIComponent(task.taskKey)}`)}
+          onCreated={(task) => {
+            if (task.sprintId) showToast('Successfully assigned to sprint.')
+            setIsCreating(false)
+          }}
         />
       )}
       <TaskCollection tasks={tasksQuery.data} isPending={tasksQuery.isPending} isError={tasksQuery.isError} error={tasksQuery.error} onRetry={() => void tasksQuery.refetch()} emptyMessage="No backlog tasks yet." />
@@ -376,6 +391,7 @@ export function BacklogPage() {
 }
 
 export function SprintTaskList({ sprintId, canCreate }: { sprintId: string; canCreate: boolean }) {
+  const { showToast } = useToast()
   const tasksQuery = useTasks(sprintId)
   const [isCreating, setIsCreating] = useState(false)
 
@@ -394,7 +410,10 @@ export function SprintTaskList({ sprintId, canCreate }: { sprintId: string; canC
         <TaskCreateDrawer
           initialSprintId={sprintId}
           onClose={() => setIsCreating(false)}
-          onCreated={() => setIsCreating(false)}
+          onCreated={(task) => {
+            if (task.sprintId) showToast('Successfully assigned to sprint.')
+            setIsCreating(false)
+          }}
         />
       )}
     </>
@@ -413,9 +432,194 @@ function taskToInput(task: Task): TaskInput {
   }
 }
 
+function TaskDependenciesPanel({
+  task,
+  readOnly,
+}: {
+  task: Task
+  readOnly: boolean
+}) {
+  const [selectedPrerequisite, setSelectedPrerequisite] = useState('')
+  const dependenciesQuery = useTaskDependencies(task.id)
+  const allTasksQuery = useTasks()
+  const addMutation = useAddTaskDependency()
+  const removeMutation = useRemoveTaskDependency()
+  const existingPrerequisites = new Set(
+    dependenciesQuery.data?.map(({ dependsOnTaskId }) => dependsOnTaskId),
+  )
+  const options = allTasksQuery.data?.filter(
+    (candidate) =>
+      candidate.id !== task.id && !existingPrerequisites.has(candidate.id),
+  )
+  const blockingDependencies =
+    dependenciesQuery.data?.filter(
+      ({ dependsOnTask }) =>
+        dependsOnTask.deletedAt !== null || dependsOnTask.status !== 'DONE',
+    ) ?? []
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Link2 aria-hidden="true" size={17} />
+          Prerequisites
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {blockingDependencies.length > 0 && (
+          <div
+            className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"
+            role="status"
+          >
+            <p className="font-medium">
+              This task is blocked until these prerequisites are completed:
+            </p>
+            <ul className="mt-2 list-inside list-disc space-y-1">
+              {blockingDependencies.map(({ id, dependsOnTask }) => (
+                <li key={id}>
+                  {dependsOnTask.deletedAt ? (
+                    <span>
+                      {dependsOnTask.taskKey} — {dependsOnTask.title} (deleted)
+                    </span>
+                  ) : (
+                    <Link
+                      className="font-medium underline underline-offset-2"
+                      to={`/tasks/${encodeURIComponent(dependsOnTask.taskKey)}`}
+                    >
+                      {dependsOnTask.taskKey} — {dependsOnTask.title}
+                    </Link>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {dependenciesQuery.isPending ? (
+          <p className="text-sm text-muted-foreground" role="status">
+            Loading prerequisites…
+          </p>
+        ) : dependenciesQuery.isError ? (
+          <TaskError message={dependenciesQuery.error.message} />
+        ) : dependenciesQuery.data?.length ? (
+          <ul className="space-y-2">
+            {dependenciesQuery.data.map(({ id, dependsOnTask }) => (
+              <li
+                key={id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-md border px-3 py-2.5"
+              >
+                <span className="min-w-0">
+                  {dependsOnTask.deletedAt ? (
+                    <span className="text-sm font-medium">
+                      {dependsOnTask.taskKey} — {dependsOnTask.title} (deleted)
+                    </span>
+                  ) : (
+                    <Link
+                      className="text-sm font-medium underline-offset-2 hover:underline"
+                      to={`/tasks/${encodeURIComponent(dependsOnTask.taskKey)}`}
+                    >
+                      {dependsOnTask.taskKey} — {dependsOnTask.title}
+                    </Link>
+                  )}
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    {dependsOnTask.deletedAt
+                      ? 'Deleted'
+                      : statusName(dependsOnTask.status)}
+                  </span>
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={readOnly || removeMutation.isPending}
+                  onClick={() =>
+                    removeMutation.mutate({
+                      taskId: task.id,
+                      dependencyId: id,
+                    })
+                  }
+                >
+                  Remove
+                </Button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            No prerequisites have been added.
+          </p>
+        )}
+
+        {removeMutation.error && (
+          <TaskError message={removeMutation.error.message} />
+        )}
+
+        <form
+          className="flex flex-col gap-2 sm:flex-row"
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (!selectedPrerequisite) return
+            addMutation.mutate(
+              { taskId: task.id, dependsOnTaskId: selectedPrerequisite },
+              { onSuccess: () => setSelectedPrerequisite('') },
+            )
+          }}
+        >
+          <select
+            className={fieldClassName}
+            value={selectedPrerequisite}
+            disabled={
+              readOnly ||
+              allTasksQuery.isPending ||
+              allTasksQuery.isError ||
+              dependenciesQuery.isPending ||
+              addMutation.isPending
+            }
+            onChange={(event) => setSelectedPrerequisite(event.target.value)}
+            aria-label="Select prerequisite task"
+          >
+            <option value="">Select a prerequisite task</option>
+            {options?.map((candidate) => (
+              <option key={candidate.id} value={candidate.id}>
+                {candidate.taskKey} — {candidate.title}
+              </option>
+            ))}
+          </select>
+          <Button
+            type="submit"
+            variant="outline"
+            disabled={readOnly || !selectedPrerequisite || addMutation.isPending}
+          >
+            {addMutation.isPending ? (
+              <LoaderCircle
+                aria-hidden="true"
+                className="animate-spin"
+                size={15}
+              />
+            ) : (
+              <Plus aria-hidden="true" size={15} />
+            )}
+            Add prerequisite
+          </Button>
+        </form>
+        {allTasksQuery.isError && (
+          <TaskError message={allTasksQuery.error.message} />
+        )}
+        {addMutation.error && <TaskError message={addMutation.error.message} />}
+        {readOnly && (
+          <p className="text-xs text-muted-foreground">
+            Reopen the sprint before changing task prerequisites.
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 export function TaskDetailsPage() {
   const { taskKey } = useParams()
   const navigate = useNavigate()
+  const { showToast } = useToast()
   const taskQuery = useTask(taskKey ?? '')
   const updateMutation = useUpdateTask()
   const deleteMutation = useDeleteTask()
@@ -434,7 +638,16 @@ export function TaskDetailsPage() {
       <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-sm text-muted-foreground">{task.taskKey}</p><h1 className="mt-1 text-2xl font-semibold tracking-tight">{task.title}</h1></div><Button variant="outline" className="border-destructive/30 text-destructive hover:bg-destructive/5 hover:text-destructive" disabled={deleteMutation.isPending || task.sprint?.status === 'COMPLETED'} onClick={() => { if (window.confirm(`Move ${task.taskKey} to the trash?`)) deleteMutation.mutate(task.id, { onSuccess: () => navigate(task.sprintId ? `/sprints/${task.sprintId}` : '/backlog') }) }}>{deleteMutation.isPending ? <LoaderCircle aria-hidden="true" className="animate-spin" size={16} /> : <Trash2 aria-hidden="true" size={16} />}Delete</Button></div>
       {task.sprint?.status === 'COMPLETED' && <TaskError message="This task is read-only while its sprint is completed. Reopen the sprint before editing it." />}
       {(updateMutation.error || deleteMutation.error) && <TaskError message={updateMutation.error?.message ?? deleteMutation.error?.message ?? 'Task update failed.'} />}
-      <Card><CardHeader><CardTitle>Task details</CardTitle></CardHeader><CardContent><TaskForm key={`${task.id}-${task.updatedAt}`} initialValue={taskToInput(task)} submitLabel="Save changes" isPending={updateMutation.isPending || task.sprint?.status === 'COMPLETED'} onSubmit={(input) => updateMutation.mutate({ id: task.id, input })} /></CardContent></Card>
+      <Card><CardHeader><CardTitle>Task details</CardTitle></CardHeader><CardContent><TaskForm key={`${task.id}-${task.updatedAt}`} initialValue={taskToInput(task)} submitLabel="Save changes" isPending={updateMutation.isPending || task.sprint?.status === 'COMPLETED'} onSubmit={(input) => updateMutation.mutate({ id: task.id, input }, { onSuccess: (updatedTask) => {
+        if (updatedTask.sprintId && updatedTask.sprintId !== task.sprintId) {
+          showToast('Successfully assigned to sprint.')
+          navigate(`/sprints/${updatedTask.sprintId}`)
+        }
+      } })} /></CardContent></Card>
+      <TaskDependenciesPanel
+        task={task}
+        readOnly={task.sprint?.status === 'COMPLETED'}
+      />
       <p className="text-xs text-muted-foreground">Created {new Date(task.createdAt).toLocaleString()} by {task.createdBy?.name ?? 'a former member'}.</p>
     </div>
   )

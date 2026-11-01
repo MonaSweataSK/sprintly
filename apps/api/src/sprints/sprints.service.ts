@@ -34,12 +34,29 @@ export class SprintsService {
   async get(id: string) {
     const sprint = await this.prisma.sprint.findUnique({
       where: { id },
-      include: sprintInclude,
+      include: {
+        ...sprintInclude,
+        tasks: {
+          where: { deletedAt: null },
+          select: { taskKey: true, status: true },
+          orderBy: { taskKey: 'asc' },
+        },
+      },
     });
     if (!sprint) {
       throw new NotFoundException('Sprint not found.');
     }
-    return sprint;
+    const { tasks, ...details } = sprint;
+    return {
+      ...details,
+      taskProgress: {
+        total: tasks.length,
+        done: tasks.filter(({ status }) => status === 'DONE').length,
+        unfinishedTaskKeys: tasks
+          .filter(({ status }) => status !== 'DONE')
+          .map(({ taskKey }) => taskKey),
+      },
+    };
   }
 
   async create(input: CreateSprintDto, user: AuthenticatedUser) {
@@ -113,6 +130,9 @@ export class SprintsService {
     try {
       await this.prisma.$transaction(
         async (transaction) => {
+          await transaction.$queryRaw`
+            SELECT pg_advisory_xact_lock(72411001::bigint)::text AS "locked"
+          `;
           const lockedSprint = await transaction.$queryRaw<{ id: string }[]>`
             SELECT "id" FROM "sprints" WHERE "id" = ${id}::uuid FOR UPDATE
           `;

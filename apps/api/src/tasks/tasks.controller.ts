@@ -14,6 +14,7 @@ import {
 import { ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedRequest } from '../auth/session-auth.guard.js';
 import { SessionAuthGuard } from '../auth/session-auth.guard.js';
+import { AddTaskDependencyDto } from './dto/add-task-dependency.dto.js';
 import { CreateTaskDto } from './dto/create-task.dto.js';
 import { UpdateTaskDto } from './dto/update-task.dto.js';
 import { TasksService } from './tasks.service.js';
@@ -68,6 +69,30 @@ export class TasksController {
   @ApiOperation({ summary: 'Move a task to the trash' })
   delete(@Param('id', ParseUUIDPipe) id: string) {
     return this.tasks.softDelete(id);
+  }
+
+  @Get('tasks/:id/dependencies')
+  @ApiOperation({ summary: 'List task prerequisites' })
+  dependencies(@Param('id', ParseUUIDPipe) id: string) {
+    return this.tasks.listDependencies(id);
+  }
+
+  @Post('tasks/:id/dependencies')
+  @ApiOperation({ summary: 'Add a task prerequisite' })
+  addDependency(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: AddTaskDependencyDto,
+  ) {
+    return this.tasks.addDependency(id, body.dependsOnTaskId);
+  }
+
+  @Delete('tasks/:id/dependencies/:dependencyId')
+  @ApiOperation({ summary: 'Remove a task prerequisite' })
+  removeDependency(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('dependencyId', ParseUUIDPipe) dependencyId: string,
+  ) {
+    return this.tasks.removeDependency(id, dependencyId);
   }
 
   @Get('sprints/:id/tasks')

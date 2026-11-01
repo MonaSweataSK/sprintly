@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft,
   CalendarDays,
+  CheckCircle2,
   Clock3,
   LoaderCircle,
   Pencil,
@@ -481,6 +482,7 @@ export function SprintDetailsPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [isEditing, setIsEditing] = useState(false)
+  const [isCompletionDialogOpen, setIsCompletionDialogOpen] = useState(false)
   const sprintQuery = useQuery({
     queryKey: ['sprints', id],
     queryFn: () => getSprint(id ?? ''),
@@ -500,6 +502,7 @@ export function SprintDetailsPage() {
   const statusMutation = useMutation({
     mutationFn: (status: SprintStatus) => setSprintStatus(id ?? '', status),
     onSuccess: refreshSprints,
+    onError: refreshSprints,
   })
   const deleteMutation = useMutation({
     mutationFn: () => deleteSprint(id ?? ''),
@@ -584,12 +587,8 @@ export function SprintDetailsPage() {
               disabled={isPending}
               onChange={(event) => {
                 const status = event.target.value as SprintStatus
-                if (
-                  status === 'COMPLETED' &&
-                  !window.confirm(
-                    'Complete this sprint? It will become read-only. You can reopen it later.',
-                  )
-                ) {
+                if (status === 'COMPLETED') {
+                  setIsCompletionDialogOpen(true)
                   return
                 }
                 statusMutation.mutate(status)
@@ -642,6 +641,98 @@ export function SprintDetailsPage() {
 
       {mutationError && <SprintError message={mutationError} />}
 
+      {isCompletionDialogOpen && sprint.status !== 'COMPLETED' && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
+          <button
+            type="button"
+            className="absolute inset-0 size-full cursor-default bg-slate-950/40"
+            aria-label="Close sprint completion dialog"
+            disabled={statusMutation.isPending}
+            onClick={() => setIsCompletionDialogOpen(false)}
+          />
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="complete-sprint-title"
+            className="relative w-full max-w-lg space-y-4 rounded-xl border bg-white p-6 shadow-2xl"
+          >
+            <div>
+              <p className="text-sm text-muted-foreground">Sprint completion</p>
+              <h2
+                id="complete-sprint-title"
+                className="mt-1 text-xl font-semibold"
+              >
+                Complete {sprint.name}?
+              </h2>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {sprint.taskProgress?.total
+                ? `${sprint.taskProgress.done} of ${sprint.taskProgress.total} tasks are done.`
+                : 'This sprint has no tasks yet.'}{' '}
+              A completed sprint is read-only until reopened.
+            </p>
+            {sprint.taskProgress?.unfinishedTaskKeys.length ? (
+              <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+                <p className="font-medium">
+                  Finish these tasks before completing the sprint:
+                </p>
+                <ul className="mt-2 list-inside list-disc space-y-1">
+                  {sprint.taskProgress.unfinishedTaskKeys.map((taskKey) => (
+                    <li key={taskKey}>
+                      <Link
+                        className="font-medium underline underline-offset-2"
+                        to={`/tasks/${encodeURIComponent(taskKey)}`}
+                        onClick={() => setIsCompletionDialogOpen(false)}
+                      >
+                        {taskKey}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {statusMutation.error && (
+              <SprintError message={statusMutation.error.message} />
+            )}
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={statusMutation.isPending}
+                onClick={() => setIsCompletionDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={
+                  statusMutation.isPending ||
+                  Boolean(sprint.taskProgress?.unfinishedTaskKeys.length)
+                }
+                onClick={() =>
+                  statusMutation.mutate('COMPLETED', {
+                    onSuccess: () => setIsCompletionDialogOpen(false),
+                  })
+                }
+              >
+                {statusMutation.isPending ? (
+                  <LoaderCircle
+                    aria-hidden="true"
+                    className="animate-spin"
+                    size={16}
+                  />
+                ) : (
+                  <CheckCircle2 aria-hidden="true" size={16} />
+                )}
+                {sprint.taskProgress?.unfinishedTaskKeys.length
+                  ? 'Finish tasks first'
+                  : 'Complete Sprint'}
+              </Button>
+            </div>
+          </section>
+        </div>
+      )}
+
       {isEditing && sprint.status !== 'COMPLETED' ? (
         <Card>
           <CardHeader>
@@ -689,6 +780,61 @@ export function SprintDetailsPage() {
           </Card>
         </div>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <CheckCircle2 aria-hidden="true" size={17} />
+            Completion progress
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {sprint.taskProgress ? (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span>
+                  {sprint.taskProgress.done} of {sprint.taskProgress.total} tasks
+                  completed
+                </span>
+                <span className="text-muted-foreground">
+                  {sprint.taskProgress.total
+                    ? Math.round(
+                        (sprint.taskProgress.done / sprint.taskProgress.total) *
+                          100,
+                      )
+                    : 0}
+                  %
+                </span>
+              </div>
+              <div
+                className="h-2 overflow-hidden rounded-full bg-muted"
+                role="progressbar"
+                aria-label="Sprint task completion"
+                aria-valuemin={0}
+                aria-valuemax={sprint.taskProgress.total}
+                aria-valuenow={sprint.taskProgress.done}
+              >
+                <div
+                  className="h-full rounded-full bg-emerald-600 transition-[width]"
+                  style={{
+                    width: `${
+                      sprint.taskProgress.total
+                        ? (sprint.taskProgress.done /
+                            sprint.taskProgress.total) *
+                          100
+                        : 0
+                    }%`,
+                  }}
+                />
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Completion progress is unavailable.
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       <SprintTaskList
         sprintId={sprint.id}

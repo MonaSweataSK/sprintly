@@ -91,4 +91,14 @@ sprint is reopened. Sprint status changes and task mutations coordinate using
 row locks, so a task cannot be added to or moved into a sprint as it is being
 completed.
 
+Manage prerequisites with `GET /api/v1/tasks/:id/dependencies`,
+`POST /api/v1/tasks/:id/dependencies` using `{ "dependsOnTaskId": "..." }`,
+and `DELETE /api/v1/tasks/:id/dependencies/:dependencyId`. Dependencies may
+span sprints. Self-dependencies and cycles are rejected. A task cannot become
+Done while any prerequisite is unfinished or deleted, and a prerequisite
+cannot be reopened or deleted while an active Done task depends on it.
+Dependency graph changes and task status transitions are serialized with a
+PostgreSQL transaction advisory lock; sprint completion takes the same lock
+and checks all active sprint tasks atomically.
+
 Run `npm run start:dev --workspace=@sprintly/api` to start the API.

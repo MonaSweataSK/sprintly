@@ -20,6 +20,7 @@ import { SprintDashboardPage, SprintDetailsPage } from '@/sprints/sprint-pages'
 import { BacklogPage, TaskDetailsPage } from '@/tasks/task-pages'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { ToastProvider } from '@/components/ui/toast'
 import { ApiError, getCurrentUser, getHealth, logout } from '@/lib/api'
 
 function PageLoader() {
@@ -91,6 +92,7 @@ function AppShell() {
   })
 
   return (
+    <ToastProvider>
     <div className="min-h-screen bg-background text-foreground">
       <header className="fixed inset-x-0 top-0 z-10 flex h-16 items-center justify-between border-b bg-white px-6">
         <Link to="/dashboard" className="flex items-center gap-3" aria-label="Sprintly home">
@@ -217,6 +219,7 @@ function AppShell() {
         </div>
       </main>
     </div>
+    </ToastProvider>
   )
 }
 

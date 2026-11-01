@@ -2,9 +2,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   createTask,
   deleteTask,
+  addTaskDependency,
   getBacklogTasks,
   getTask,
+  getTaskDependencies,
   getTasks,
+  removeTaskDependency,
   updateTask,
   type TaskInput,
 } from '@/lib/api'
@@ -32,10 +35,21 @@ export function useTask(taskKey: string) {
   })
 }
 
+export function useTaskDependencies(taskId: string) {
+  return useQuery({
+    queryKey: ['tasks', taskId, 'dependencies'],
+    queryFn: () => getTaskDependencies(taskId),
+    enabled: Boolean(taskId),
+  })
+}
+
 function useInvalidateTasks() {
   const queryClient = useQueryClient()
   return async () => {
-    await queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['tasks'] }),
+      queryClient.invalidateQueries({ queryKey: ['sprints'] }),
+    ])
   }
 }
 
@@ -61,5 +75,47 @@ export function useDeleteTask() {
   return useMutation({
     mutationFn: deleteTask,
     onSuccess: invalidateTasks,
+  })
+}
+
+export function useAddTaskDependency() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      taskId,
+      dependsOnTaskId,
+    }: {
+      taskId: string
+      dependsOnTaskId: string
+    }) => addTaskDependency(taskId, dependsOnTaskId),
+    onSuccess: async (_dependency, { taskId }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['tasks'] }),
+        queryClient.invalidateQueries({
+          queryKey: ['tasks', taskId, 'dependencies'],
+        }),
+      ])
+    },
+  })
+}
+
+export function useRemoveTaskDependency() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      taskId,
+      dependencyId,
+    }: {
+      taskId: string
+      dependencyId: string
+    }) => removeTaskDependency(taskId, dependencyId),
+    onSuccess: async (_result, { taskId }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['tasks'] }),
+        queryClient.invalidateQueries({
+          queryKey: ['tasks', taskId, 'dependencies'],
+        }),
+      ])
+    },
   })
 }

@@ -56,6 +56,118 @@ export class TasksService {
     return task;
   }
 
+  async listDependencies(id: string) {
+    const task = await this.prisma.task.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true },
+    });
+    if (!task) throw new NotFoundException('Task not found.');
+
+    return this.prisma.taskDependency.findMany({
+      where: { taskId: id },
+      include: {
+        dependsOnTask: {
+          select: {
+            id: true,
+            taskKey: true,
+            title: true,
+            status: true,
+            deletedAt: true,
+            sprintId: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  async addDependency(id: string, dependsOnTaskId: string) {
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        await this.lockDependencyGraph(transaction);
+        const dependent = await this.getEditableTask(transaction, id);
+        if (id === dependsOnTaskId) {
+          throw new BadRequestException('A task cannot depend on itself.');
+        }
+
+        const prerequisite = await transaction.task.findFirst({
+          where: { id: dependsOnTaskId },
+          select: {
+            id: true,
+            taskKey: true,
+            status: true,
+            deletedAt: true,
+          },
+        });
+        if (!prerequisite || prerequisite.deletedAt) {
+          throw new NotFoundException('Active prerequisite task not found.');
+        }
+        if (dependent.status === 'DONE' && prerequisite.status !== 'DONE') {
+          throw new ConflictException(
+            `Cannot add ${prerequisite.taskKey} as a prerequisite because ${dependent.taskKey} is already Done.`,
+          );
+        }
+
+        const cycle = await transaction.$queryRaw<{ cycle: boolean }[]>`
+          WITH RECURSIVE prerequisite_path("task_id") AS (
+            SELECT ${dependsOnTaskId}::uuid
+            UNION
+            SELECT dependency."depends_on_task_id"
+            FROM "task_dependencies" dependency
+            JOIN prerequisite_path path
+              ON dependency."task_id" = path."task_id"
+          )
+          SELECT EXISTS (
+            SELECT 1 FROM prerequisite_path
+            WHERE "task_id" = ${id}::uuid
+          ) AS "cycle"
+        `;
+        if (cycle[0]?.cycle) {
+          throw new BadRequestException(
+            'This dependency would create a circular task dependency.',
+          );
+        }
+
+        return transaction.taskDependency.create({
+          data: { taskId: id, dependsOnTaskId },
+          include: {
+            dependsOnTask: {
+              select: {
+                id: true,
+                taskKey: true,
+                title: true,
+                status: true,
+                deletedAt: true,
+                sprintId: true,
+              },
+            },
+          },
+        });
+      });
+    } catch (error) {
+      if (this.isUniqueViolation(error)) {
+        throw new ConflictException('This prerequisite is already added.');
+      }
+      throw error;
+    }
+  }
+
+  async removeDependency(id: string, dependencyId: string) {
+    return this.prisma.$transaction(async (transaction) => {
+      await this.lockDependencyGraph(transaction);
+      const task = await this.getEditableTask(transaction, id);
+      const dependency = await transaction.taskDependency.findFirst({
+        where: { id: dependencyId, taskId: id },
+        select: { id: true },
+      });
+      if (!dependency) {
+        throw new NotFoundException('Task dependency not found.');
+      }
+      await transaction.taskDependency.delete({ where: { id: dependencyId } });
+      return { removed: true, taskId: task.id };
+    });
+  }
+
   async create(input: CreateTaskDto, user: AuthenticatedUser) {
     const startDate = parseDate(input.startDate);
     const endDate = parseDate(input.endDate);
@@ -88,9 +200,12 @@ export class TasksService {
 
   async update(id: string, input: UpdateTaskDto) {
     return this.prisma.$transaction(async (transaction) => {
+      if (input.status !== undefined) {
+        await this.lockDependencyGraph(transaction);
+      }
       const snapshot = await transaction.task.findFirst({
         where: { id, deletedAt: null },
-        select: { sprintId: true },
+        select: { sprintId: true, status: true, taskKey: true },
       });
       if (!snapshot) throw new NotFoundException('Task not found.');
 
@@ -121,6 +236,14 @@ export class TasksService {
         await this.assertAssigneeActive(transaction, input.assigneeId);
       }
 
+      const nextStatus: TaskStatus = input.status ?? current.status;
+      if (current.status !== nextStatus && nextStatus === 'DONE') {
+        await this.assertPrerequisitesDone(transaction, id, current.taskKey);
+      }
+      if (current.status === 'DONE' && nextStatus !== 'DONE') {
+        await this.assertNoDoneDependents(transaction, id, current.taskKey);
+      }
+
       return transaction.task.update({
         where: { id },
         data: {
@@ -143,9 +266,10 @@ export class TasksService {
 
   async softDelete(id: string) {
     return this.prisma.$transaction(async (transaction) => {
+      await this.lockDependencyGraph(transaction);
       const snapshot = await transaction.task.findFirst({
         where: { id, deletedAt: null },
-        select: { sprintId: true },
+        select: { sprintId: true, taskKey: true },
       });
       if (!snapshot) throw new NotFoundException('Task not found.');
 
@@ -158,6 +282,7 @@ export class TasksService {
         );
       }
       await this.assertSprintsEditable(transaction, sprintIds);
+      await this.assertNoDoneDependents(transaction, id, snapshot.taskKey);
 
       await transaction.task.update({
         where: { id },
@@ -165,6 +290,83 @@ export class TasksService {
       });
       return { deleted: true };
     });
+  }
+
+  private async getEditableTask(
+    transaction: Prisma.TransactionClient,
+    id: string,
+  ) {
+    const snapshot = await transaction.task.findFirst({
+      where: { id, deletedAt: null },
+      select: { sprintId: true },
+    });
+    if (!snapshot) throw new NotFoundException('Task not found.');
+    const sprintIds = snapshot.sprintId ? [snapshot.sprintId] : [];
+    await this.lockSprints(transaction, sprintIds);
+    const task = await this.lockAndReadTask(transaction, id);
+    if (task.sprintId !== snapshot.sprintId) {
+      throw new ConflictException(
+        'The task changed while its dependencies were being updated. Refresh and try again.',
+      );
+    }
+    await this.assertSprintsEditable(transaction, sprintIds);
+    return task;
+  }
+
+  private async assertPrerequisitesDone(
+    transaction: Prisma.TransactionClient,
+    taskId: string,
+    taskKey: string,
+  ): Promise<void> {
+    const blocking = await transaction.taskDependency.findMany({
+      where: { taskId },
+      select: {
+        dependsOnTask: {
+          select: { taskKey: true, status: true, deletedAt: true },
+        },
+      },
+      orderBy: { dependsOnTask: { taskKey: 'asc' } },
+    });
+    const taskKeys = blocking
+      .filter(
+        ({ dependsOnTask }) =>
+          dependsOnTask.deletedAt !== null || dependsOnTask.status !== 'DONE',
+      )
+      .map(({ dependsOnTask }) => dependsOnTask.taskKey);
+    if (taskKeys.length) {
+      throw new ConflictException(
+        `Cannot complete ${taskKey}. ${taskKeys.join(', ')} must be completed first.`,
+      );
+    }
+  }
+
+  private async assertNoDoneDependents(
+    transaction: Prisma.TransactionClient,
+    taskId: string,
+    taskKey: string,
+  ): Promise<void> {
+    const dependents = await transaction.taskDependency.findMany({
+      where: {
+        dependsOnTaskId: taskId,
+        task: { status: 'DONE', deletedAt: null },
+      },
+      select: { task: { select: { taskKey: true } } },
+      orderBy: { task: { taskKey: 'asc' } },
+    });
+    const taskKeys = dependents.map(({ task }) => task.taskKey);
+    if (taskKeys.length) {
+      throw new ConflictException(
+        `Cannot change ${taskKey}. Completed dependent tasks ${taskKeys.join(', ')} rely on it.`,
+      );
+    }
+  }
+
+  private async lockDependencyGraph(
+    transaction: Prisma.TransactionClient,
+  ): Promise<void> {
+    await transaction.$queryRaw`
+      SELECT pg_advisory_xact_lock(72411001::bigint)::text AS "locked"
+    `;
   }
 
   private async lockSprints(
@@ -209,6 +411,8 @@ export class TasksService {
         sprintId: true,
         startDate: true,
         endDate: true,
+        status: true,
+        taskKey: true,
       },
     });
     if (!task) throw new NotFoundException('Task not found.');
@@ -245,5 +449,12 @@ export class TasksService {
         'The task end date cannot be before its start date.',
       );
     }
+  }
+
+  private isUniqueViolation(error: unknown): boolean {
+    return (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === 'P2002'
+    );
   }
 }

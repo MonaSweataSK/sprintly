@@ -42,6 +42,12 @@ describe('TasksService', () => {
       create: ReturnType<typeof vi.fn>;
       update: ReturnType<typeof vi.fn>;
     };
+    taskDependency: {
+      findMany: ReturnType<typeof vi.fn>;
+      findFirst: ReturnType<typeof vi.fn>;
+      create: ReturnType<typeof vi.fn>;
+      delete: ReturnType<typeof vi.fn>;
+    };
     sprint: { findMany: ReturnType<typeof vi.fn> };
     user: { findFirst: ReturnType<typeof vi.fn> };
     $queryRaw: ReturnType<typeof vi.fn>;
@@ -51,6 +57,7 @@ describe('TasksService', () => {
       findFirst: ReturnType<typeof vi.fn>;
       findMany: ReturnType<typeof vi.fn>;
     };
+    taskDependency: { findMany: ReturnType<typeof vi.fn> };
     $transaction: ReturnType<typeof vi.fn>;
   };
 
@@ -62,6 +69,16 @@ describe('TasksService', () => {
         create: vi.fn().mockResolvedValue(task),
         update: vi.fn().mockResolvedValue(task),
       },
+      taskDependency: {
+        findMany: vi.fn().mockResolvedValue([]),
+        findFirst: vi.fn().mockResolvedValue({ id: 'dependency-id' }),
+        create: vi.fn().mockResolvedValue({
+          id: 'dependency-id',
+          taskId,
+          dependsOnTaskId: '00000000-0000-4000-8000-000000000004',
+        }),
+        delete: vi.fn().mockResolvedValue({ id: 'dependency-id' }),
+      },
       sprint: { findMany: vi.fn().mockResolvedValue([]) },
       user: { findFirst: vi.fn().mockResolvedValue({ id: user.id }) },
       $queryRaw: vi.fn().mockResolvedValue([{ id: sprintId }]),
@@ -71,6 +88,7 @@ describe('TasksService', () => {
         findFirst: vi.fn().mockResolvedValue(task),
         findMany: vi.fn().mockResolvedValue([task]),
       },
+      taskDependency: { findMany: vi.fn().mockResolvedValue([]) },
       $transaction: vi.fn(
         async (callback: (tx: typeof transaction) => unknown) =>
           callback(transaction),
@@ -156,5 +174,162 @@ describe('TasksService', () => {
         where: { sprintId: null, deletedAt: null },
       }),
     );
+  });
+
+  it('rejects a task as its own prerequisite', async () => {
+    await expect(
+      service.addDependency(taskId, taskId),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(transaction.taskDependency.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects circular dependency edges', async () => {
+    transaction.$queryRaw
+      .mockResolvedValueOnce([{}])
+      .mockResolvedValueOnce([{ id: sprintId }])
+      .mockResolvedValueOnce([{ id: taskId }])
+      .mockResolvedValueOnce([{ cycle: true }]);
+
+    await expect(
+      service.addDependency(taskId, '00000000-0000-4000-8000-000000000004'),
+    ).rejects.toThrow('circular');
+    expect(transaction.taskDependency.create).not.toHaveBeenCalled();
+  });
+
+  it('adds a valid prerequisite', async () => {
+    transaction.task.findFirst
+      .mockReset()
+      .mockResolvedValueOnce(task)
+      .mockResolvedValueOnce(task)
+      .mockResolvedValueOnce({
+        id: '00000000-0000-4000-8000-000000000004',
+        taskKey: 'TASK-100',
+        status: 'DONE',
+        deletedAt: null,
+      });
+
+    await service.addDependency(
+      taskId,
+      '00000000-0000-4000-8000-000000000004',
+    );
+
+    expect(transaction.taskDependency.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: {
+          taskId,
+          dependsOnTaskId: '00000000-0000-4000-8000-000000000004',
+        },
+      }),
+    );
+  });
+
+  it('lists prerequisites including soft-deleted prerequisite records', async () => {
+    prisma.taskDependency.findMany.mockResolvedValueOnce([
+      {
+        id: 'dependency-id',
+        taskId,
+        dependsOnTaskId: '00000000-0000-4000-8000-000000000004',
+        dependsOnTask: {
+          id: '00000000-0000-4000-8000-000000000004',
+          taskKey: 'TASK-099',
+          title: 'Deleted prerequisite',
+          status: 'DONE',
+          deletedAt: new Date(),
+          sprintId: null,
+        },
+      },
+    ]);
+
+    const dependencies = await service.listDependencies(taskId);
+
+    expect(dependencies[0].dependsOnTask.deletedAt).toBeInstanceOf(Date);
+    expect(prisma.taskDependency.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { taskId } }),
+    );
+  });
+
+  it('does not add an unfinished prerequisite to an already Done task', async () => {
+    transaction.task.findFirst
+      .mockReset()
+      .mockResolvedValueOnce({ ...task, status: 'DONE' })
+      .mockResolvedValueOnce({ ...task, status: 'DONE' })
+      .mockResolvedValueOnce({
+        id: '00000000-0000-4000-8000-000000000004',
+        taskKey: 'TASK-100',
+        status: 'TODO',
+        deletedAt: null,
+      });
+
+    await expect(
+      service.addDependency(
+        taskId,
+        '00000000-0000-4000-8000-000000000004',
+      ),
+    ).rejects.toThrow('already Done');
+    expect(transaction.taskDependency.create).not.toHaveBeenCalled();
+  });
+
+  it('removes a prerequisite edge from an editable task', async () => {
+    await service.removeDependency(taskId, 'dependency-id');
+
+    expect(transaction.taskDependency.delete).toHaveBeenCalledWith({
+      where: { id: 'dependency-id' },
+    });
+  });
+
+  it('blocks task completion while a prerequisite is unfinished', async () => {
+    transaction.taskDependency.findMany.mockResolvedValueOnce([
+      {
+        dependsOnTask: {
+          taskKey: 'TASK-100',
+          status: 'IN_PROGRESS',
+          deletedAt: null,
+        },
+      },
+    ]);
+
+    await expect(service.update(taskId, { status: 'DONE' })).rejects.toThrow(
+      'TASK-100 must be completed first',
+    );
+    expect(transaction.task.update).not.toHaveBeenCalled();
+  });
+
+  it('keeps deleted prerequisites blocking task completion', async () => {
+    transaction.taskDependency.findMany.mockResolvedValueOnce([
+      {
+        dependsOnTask: {
+          taskKey: 'TASK-099',
+          status: 'DONE',
+          deletedAt: new Date(),
+        },
+      },
+    ]);
+
+    await expect(service.update(taskId, { status: 'DONE' })).rejects.toThrow(
+      'TASK-099 must be completed first',
+    );
+  });
+
+  it('prevents reopening a prerequisite used by a completed task', async () => {
+    transaction.task.findFirst
+      .mockResolvedValueOnce({ ...task, status: 'DONE' })
+      .mockResolvedValueOnce({ ...task, status: 'DONE' });
+    transaction.taskDependency.findMany.mockResolvedValueOnce([
+      { task: { taskKey: 'TASK-105' } },
+    ]);
+
+    await expect(service.update(taskId, { status: 'TODO' })).rejects.toThrow(
+      'TASK-105',
+    );
+    expect(transaction.task.update).not.toHaveBeenCalled();
+  });
+
+  it('prevents deleting a prerequisite used by a completed task', async () => {
+    transaction.taskDependency.findMany.mockResolvedValueOnce([
+      { task: { taskKey: 'TASK-105' } },
+    ]);
+
+    await expect(service.softDelete(taskId)).rejects.toThrow('TASK-105');
+    expect(transaction.task.update).not.toHaveBeenCalled();
   });
 });
