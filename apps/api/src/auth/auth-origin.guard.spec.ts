@@ -4,10 +4,10 @@ import type { ExecutionContext } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { AuthOriginGuard } from './auth-origin.guard.js';
 
-function contextFor(origin?: string): ExecutionContext {
+function contextFor(origin?: string, method = 'POST'): ExecutionContext {
   return {
     switchToHttp: () => ({
-      getRequest: () => ({ headers: { origin } }),
+      getRequest: () => ({ headers: { origin }, method }),
     }),
   } as unknown as ExecutionContext;
 }
@@ -22,10 +22,17 @@ describe('AuthOriginGuard', () => {
     expect(guard.canActivate(contextFor('http://localhost:5173'))).toBe(true);
   });
 
-  it('rejects missing and untrusted origins', () => {
+  it('allows same-origin GET requests without an Origin header', () => {
+    expect(guard.canActivate(contextFor(undefined, 'GET'))).toBe(true);
+  });
+
+  it('rejects missing origins on state-changing requests and untrusted origins', () => {
     expect(() => guard.canActivate(contextFor())).toThrow(ForbiddenException);
     expect(() => guard.canActivate(contextFor('https://untrusted.example'))).toThrow(
       ForbiddenException,
     );
+    expect(() =>
+      guard.canActivate(contextFor('https://untrusted.example', 'GET')),
+    ).toThrow(ForbiddenException);
   });
 });

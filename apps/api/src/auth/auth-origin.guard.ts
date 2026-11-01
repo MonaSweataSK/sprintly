@@ -19,7 +19,11 @@ export class AuthOriginGuard implements CanActivate {
 
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<Request>();
-    if (request.headers.origin !== this.frontendOrigin) {
+    const origin = request.headers.origin;
+    if (
+      (origin !== undefined && origin !== this.frontendOrigin) ||
+      (origin === undefined && request.method !== 'GET')
+    ) {
       throw new ForbiddenException('Requests must come from the configured application origin.');
     }
     return true;
