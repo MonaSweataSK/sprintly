@@ -12,6 +12,7 @@ interface SelectorProps {
   value: string
   onChange: (value: string) => void
   disabled?: boolean
+  onBlur?: () => void
 }
 
 export function MemberSelector({
@@ -19,6 +20,7 @@ export function MemberSelector({
   value,
   onChange,
   disabled = false,
+  onBlur,
 }: SelectorProps) {
   const options = useQuery({
     queryKey: ['assignee-options'],
@@ -33,6 +35,7 @@ export function MemberSelector({
         className={selectClassName}
         value={value}
         onChange={(event) => onChange(event.target.value)}
+        onBlur={onBlur}
         disabled={disabled || options.isPending || options.isError}
         aria-describedby={options.isError ? `${id}-error` : undefined}
       >

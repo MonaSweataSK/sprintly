@@ -60,6 +60,7 @@ describe('TasksService', () => {
       count: ReturnType<typeof vi.fn>;
     };
     taskDependency: { findMany: ReturnType<typeof vi.fn> };
+    $queryRaw: ReturnType<typeof vi.fn>;
     $transaction: ReturnType<typeof vi.fn>;
   };
 
@@ -95,6 +96,7 @@ describe('TasksService', () => {
         count: vi.fn().mockResolvedValue(1),
       },
       taskDependency: { findMany: vi.fn().mockResolvedValue([]) },
+      $queryRaw: vi.fn().mockResolvedValue([]),
       $transaction: vi.fn(
         async (callback: (tx: typeof transaction) => unknown) =>
           callback(transaction),
@@ -180,6 +182,35 @@ describe('TasksService', () => {
         where: { sprintId: null, deletedAt: null },
       }),
     );
+  });
+
+  it('searches active tasks across sprint and backlog with bounded ranked results', async () => {
+    prisma.$queryRaw.mockResolvedValueOnce([
+      {
+        id: task.id,
+        taskKey: task.taskKey,
+        title: task.title,
+        description: task.description,
+        sprintId: task.sprintId,
+        sprintName: task.sprint.name,
+      },
+    ]);
+
+    await expect(service.search(' task_101 ')).resolves.toEqual([
+      {
+        id: task.id,
+        taskKey: task.taskKey,
+        title: task.title,
+        description: task.description,
+        sprintId: task.sprintId,
+        sprintName: task.sprint.name,
+      },
+    ]);
+    expect(prisma.$queryRaw).toHaveBeenCalledOnce();
+    const queryFragments = prisma.$queryRaw.mock.calls[0][0].join('?');
+    expect(queryFragments).toContain('"deleted_at" IS NULL');
+    expect(queryFragments).toContain('LIMIT 8');
+    expect(queryFragments).toContain('ORDER BY');
   });
 
   it('returns a stable, paginated list of active tasks for an existing sprint', async () => {

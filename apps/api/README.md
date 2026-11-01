@@ -113,4 +113,14 @@ outside-team assignees used by those tasks. The React board groups tasks by
 status, assignee, or due-date bucket and applies moves through the standard
 task update endpoint, preserving server-side validation.
 
+Global task suggestions are available to authenticated users at
+`GET /api/v1/tasks/search?q=...`. Search matches task key, title, and
+description case-insensitively across all sprints and backlog, excludes
+soft-deleted tasks, ranks exact/prefix matches ahead of substring matches, and
+returns at most eight results. Queries must contain 1–100 characters. The
+current local dataset is small, and `EXPLAIN ANALYZE` measured the ranked
+partial-match query at 0.061 ms on four active tasks; no additional search
+indexes are justified at this scale. Re-measure with representative production
+data before adding trigram indexes.
+
 Run `npm run start:dev --workspace=@sprintly/api` to start the API.

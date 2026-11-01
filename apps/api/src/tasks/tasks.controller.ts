@@ -22,6 +22,7 @@ import { SessionAuthGuard } from '../auth/session-auth.guard.js';
 import { AddTaskDependencyDto } from './dto/add-task-dependency.dto.js';
 import { CreateTaskDto } from './dto/create-task.dto.js';
 import { ListSprintTasksQueryDto } from './dto/list-sprint-tasks-query.dto.js';
+import { SearchTasksQueryDto } from './dto/search-tasks-query.dto.js';
 import { UpdateTaskDto } from './dto/update-task.dto.js';
 import { TasksService } from './tasks.service.js';
 
@@ -45,6 +46,18 @@ export class TasksController {
     sprintId?: string,
   ) {
     return this.tasks.list(sprintId);
+  }
+
+  @Get('tasks/search')
+  @ApiOperation({ summary: 'Search active tasks across all sprints and backlog' })
+  @ApiQuery({
+    name: 'q',
+    required: true,
+    minLength: 1,
+    maxLength: 100,
+  })
+  search(@Query() query: SearchTasksQueryDto) {
+    return this.tasks.search(query.q);
   }
 
   @Post('tasks')

@@ -20,6 +20,7 @@ import { SprintDashboardPage, SprintDetailsPage } from '@/sprints/sprint-pages'
 import { BacklogPage, TaskDetailsPage } from '@/tasks/task-pages'
 import { SprintBoardPage } from '@/tasks/sprint-board-page'
 import { SprintTaskListPage } from '@/tasks/sprint-task-list-page'
+import { GlobalTaskSearch } from '@/tasks/global-task-search'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ToastProvider } from '@/components/ui/toast'
@@ -106,6 +107,7 @@ function AppShell() {
             Workspace
           </span>
         </Link>
+        <GlobalTaskSearch />
         <div className="flex items-center gap-3">
           <div className="hidden text-right sm:block">
             <p className="text-sm font-medium">{user?.name}</p>

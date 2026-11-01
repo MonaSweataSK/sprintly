@@ -389,8 +389,12 @@ corresponding task details page.
 
 Search does not filter the currently open Board or List.
 
-Implementation: use PostgreSQL case-insensitive partial matching, return
-a limited number of matches, and debounce API requests in React.
+Implementation: use PostgreSQL case-insensitive partial matching, return at
+most eight ranked suggestions, and debounce API requests in React. The API
+excludes soft-deleted tasks and the global header supports keyboard navigation.
+The current four-task local dataset measured 0.061 ms with `EXPLAIN ANALYZE`,
+so add trigram indexes only after re-measuring against representative larger
+data; suggestions do not change the active Board or List task set.
 
 ## 12. Task Deletion
 

@@ -119,6 +119,15 @@ export interface TaskInput {
   status?: TaskStatus
 }
 
+export interface TaskSearchSuggestion {
+  id: string
+  taskKey: string
+  title: string
+  description: string | null
+  sprintId: string | null
+  sprintName: string | null
+}
+
 export interface TaskDependency {
   id: string
   taskId: string
@@ -425,6 +434,11 @@ export async function deleteSprint(id: string): Promise<void> {
 export async function getTasks(sprintId?: string): Promise<Task[]> {
   const query = sprintId ? `?sprintId=${encodeURIComponent(sprintId)}` : ''
   return apiRequest<Task[]>(`/tasks${query}`)
+}
+
+export async function searchTasks(query: string): Promise<TaskSearchSuggestion[]> {
+  const search = new URLSearchParams({ q: query })
+  return apiRequest<TaskSearchSuggestion[]>(`/tasks/search?${search.toString()}`)
 }
 
 export async function getSprintBoard(sprintId: string): Promise<SprintBoard> {

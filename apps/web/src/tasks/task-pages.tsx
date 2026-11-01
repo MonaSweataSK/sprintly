@@ -120,6 +120,8 @@ function TaskForm({
   error,
   submitLabel,
   onSubmit,
+  autoSave = false,
+  onAutosave,
 }: {
   initialValue?: TaskInput
   initialSprintId?: string | null
@@ -127,6 +129,8 @@ function TaskForm({
   error?: string
   submitLabel: string
   onSubmit: (input: TaskInput) => void
+  autoSave?: boolean
+  onAutosave?: (patch: Partial<TaskInput>) => void
 }) {
   const [form, setForm] = useState<TaskInput>(() => ({
     title: initialValue?.title ?? '',
@@ -138,6 +142,57 @@ function TaskForm({
     status: initialValue?.status ?? 'TODO',
   }))
   const sprintsQuery = useQuery({ queryKey: ['sprints'], queryFn: getSprints })
+
+  function saveField(field: keyof TaskInput) {
+    if (!autoSave || !onAutosave) return
+    switch (field) {
+      case 'title': {
+        const title = form.title.trim()
+        if (title && title !== initialValue?.title) onAutosave({ title })
+        break
+      }
+      case 'description': {
+        const description = form.description?.trim() || null
+        if (description !== (initialValue?.description?.trim() || null)) {
+          onAutosave({ description })
+        }
+        break
+      }
+      case 'assigneeId': {
+        const assigneeId = form.assigneeId || null
+        if (assigneeId !== (initialValue?.assigneeId ?? null)) {
+          onAutosave({ assigneeId })
+        }
+        break
+      }
+      case 'sprintId': {
+        const sprintId = form.sprintId || null
+        if (sprintId !== (initialValue?.sprintId ?? null)) {
+          onAutosave({ sprintId })
+        }
+        break
+      }
+      case 'status':
+        if (form.status !== initialValue?.status) {
+          onAutosave({ status: form.status })
+        }
+        break
+      case 'startDate': {
+        const startDate = form.startDate || null
+        if (startDate !== (initialValue?.startDate?.slice(0, 10) ?? null)) {
+          onAutosave({ startDate })
+        }
+        break
+      }
+      case 'endDate': {
+        const endDate = form.endDate || null
+        if (endDate !== (initialValue?.endDate?.slice(0, 10) ?? null)) {
+          onAutosave({ endDate })
+        }
+        break
+      }
+    }
+  }
 
   return (
     <form
@@ -164,6 +219,7 @@ function TaskForm({
           required
           disabled={isPending}
           onChange={(event) => setForm((value) => ({ ...value, title: event.target.value }))}
+          onBlur={() => saveField('title')}
         />
       </label>
 
@@ -175,6 +231,7 @@ function TaskForm({
           maxLength={10000}
           disabled={isPending}
           onChange={(event) => setForm((value) => ({ ...value, description: event.target.value }))}
+          onBlur={() => saveField('description')}
         />
       </label>
 
@@ -186,6 +243,7 @@ function TaskForm({
             value={form.assigneeId ?? ''}
             disabled={isPending}
             onChange={(assigneeId) => setForm((value) => ({ ...value, assigneeId: assigneeId || null }))}
+            onBlur={() => saveField('assigneeId')}
           />
         </label>
         <label className="block space-y-2 text-sm font-medium">
@@ -195,6 +253,7 @@ function TaskForm({
             value={form.sprintId ?? ''}
             disabled={isPending || sprintsQuery.isPending || sprintsQuery.isError}
             onChange={(event) => setForm((value) => ({ ...value, sprintId: event.target.value || null }))}
+            onBlur={() => saveField('sprintId')}
           >
             <option value="">Backlog (no sprint)</option>
             {sprintsQuery.data
@@ -222,6 +281,7 @@ function TaskForm({
             value={form.status ?? 'TODO'}
             disabled={isPending}
             onChange={(event) => setForm((value) => ({ ...value, status: event.target.value as TaskStatus }))}
+            onBlur={() => saveField('status')}
           >
             {statuses.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
           </select>
@@ -236,6 +296,7 @@ function TaskForm({
             max={form.endDate || undefined}
             disabled={isPending}
             onChange={(event) => setForm((value) => ({ ...value, startDate: event.target.value || null }))}
+            onBlur={() => saveField('startDate')}
           />
         </label>
         <label className="block space-y-2 text-sm font-medium">
@@ -247,15 +308,18 @@ function TaskForm({
             min={form.startDate || undefined}
             disabled={isPending}
             onChange={(event) => setForm((value) => ({ ...value, endDate: event.target.value || null }))}
+            onBlur={() => saveField('endDate')}
           />
         </label>
       </div>
 
       {error && <TaskError message={error} />}
-      <Button type="submit" disabled={isPending || !form.title.trim() || Boolean(form.startDate && form.endDate && form.endDate < form.startDate)}>
-        {isPending ? <LoaderCircle aria-hidden="true" className="animate-spin" size={16} /> : <Plus aria-hidden="true" size={16} />}
-        {submitLabel}
-      </Button>
+      {!autoSave && (
+        <Button type="submit" disabled={isPending || !form.title.trim() || Boolean(form.startDate && form.endDate && form.endDate < form.startDate)}>
+          {isPending ? <LoaderCircle aria-hidden="true" className="animate-spin" size={16} /> : <Plus aria-hidden="true" size={16} />}
+          {submitLabel}
+        </Button>
+      )}
     </form>
   )
 }
@@ -638,12 +702,41 @@ export function TaskDetailsPage() {
       <div className="flex flex-wrap items-end justify-between gap-4"><div><p className="text-sm text-muted-foreground">{task.taskKey}</p><h1 className="mt-1 text-2xl font-semibold tracking-tight">{task.title}</h1></div><Button variant="outline" className="border-destructive/30 text-destructive hover:bg-destructive/5 hover:text-destructive" disabled={deleteMutation.isPending || task.sprint?.status === 'COMPLETED'} onClick={() => { if (window.confirm(`Move ${task.taskKey} to the trash?`)) deleteMutation.mutate(task.id, { onSuccess: () => navigate(task.sprintId ? `/sprints/${task.sprintId}` : '/backlog') }) }}>{deleteMutation.isPending ? <LoaderCircle aria-hidden="true" className="animate-spin" size={16} /> : <Trash2 aria-hidden="true" size={16} />}Delete</Button></div>
       {task.sprint?.status === 'COMPLETED' && <TaskError message="This task is read-only while its sprint is completed. Reopen the sprint before editing it." />}
       {(updateMutation.error || deleteMutation.error) && <TaskError message={updateMutation.error?.message ?? deleteMutation.error?.message ?? 'Task update failed.'} />}
-      <Card><CardHeader><CardTitle>Task details</CardTitle></CardHeader><CardContent><TaskForm key={`${task.id}-${task.updatedAt}`} initialValue={taskToInput(task)} submitLabel="Save changes" isPending={updateMutation.isPending || task.sprint?.status === 'COMPLETED'} onSubmit={(input) => updateMutation.mutate({ id: task.id, input }, { onSuccess: (updatedTask) => {
-        if (updatedTask.sprintId && updatedTask.sprintId !== task.sprintId) {
-          showToast('Successfully assigned to sprint.')
-          navigate(`/sprints/${updatedTask.sprintId}`)
-        }
-      } })} /></CardContent></Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Task details</CardTitle>
+          <p className="text-sm font-normal text-muted-foreground" role="status">
+            {updateMutation.isPending
+              ? 'Saving changes…'
+              : 'Changes save automatically when you leave a field.'}
+          </p>
+        </CardHeader>
+        <CardContent>
+          <TaskForm
+            key={`${task.id}-${task.updatedAt}`}
+            initialValue={taskToInput(task)}
+            submitLabel="Save changes"
+            autoSave
+            isPending={
+              updateMutation.isPending || task.sprint?.status === 'COMPLETED'
+            }
+            onSubmit={() => undefined}
+            onAutosave={(input) =>
+              updateMutation.mutate({ id: task.id, input }, {
+                onSuccess: (updatedTask) => {
+                  if (
+                    updatedTask.sprintId &&
+                    updatedTask.sprintId !== task.sprintId
+                  ) {
+                    showToast('Successfully assigned to sprint.')
+                    navigate(`/sprints/${updatedTask.sprintId}`)
+                  }
+                },
+              })
+            }
+          />
+        </CardContent>
+      </Card>
       <TaskDependenciesPanel
         task={task}
         readOnly={task.sprint?.status === 'COMPLETED'}

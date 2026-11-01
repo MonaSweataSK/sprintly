@@ -48,6 +48,52 @@ export class TasksService {
     });
   }
 
+  async search(query: string) {
+    const escapedQuery = query.replace(/[!%_]/g, '!$&');
+    const containsPattern = `%${escapedQuery}%`;
+    const prefixPattern = `${escapedQuery}%`;
+
+    return this.prisma.$queryRaw<
+      {
+        id: string;
+        taskKey: string;
+        title: string;
+        description: string | null;
+        sprintId: string | null;
+        sprintName: string | null;
+      }[]
+    >`
+      SELECT
+        task."id",
+        task."task_key" AS "taskKey",
+        task."title",
+        left(task."description", 180) AS "description",
+        task."sprint_id" AS "sprintId",
+        sprint."name" AS "sprintName"
+      FROM "tasks" task
+      LEFT JOIN "sprints" sprint ON sprint."id" = task."sprint_id"
+      WHERE task."deleted_at" IS NULL
+        AND (
+          task."task_key" ILIKE ${containsPattern} ESCAPE '!'
+          OR task."title" ILIKE ${containsPattern} ESCAPE '!'
+          OR task."description" ILIKE ${containsPattern} ESCAPE '!'
+        )
+      ORDER BY
+        CASE
+          WHEN lower(task."task_key") = lower(${query}) THEN 0
+          WHEN lower(task."task_key") LIKE lower(${prefixPattern}) ESCAPE '!' THEN 1
+          WHEN lower(task."title") = lower(${query}) THEN 2
+          WHEN lower(task."title") LIKE lower(${prefixPattern}) ESCAPE '!' THEN 3
+          WHEN task."task_key" ILIKE ${containsPattern} ESCAPE '!' THEN 4
+          WHEN task."title" ILIKE ${containsPattern} ESCAPE '!' THEN 5
+          ELSE 6
+        END,
+        task."task_key" ASC,
+        task."id" ASC
+      LIMIT 8
+    `;
+  }
+
   async listSprintTasks(sprintId: string, query: ListSprintTasksQueryDto) {
     const sprint = await this.prisma.sprint.findUnique({
       where: { id: sprintId },
