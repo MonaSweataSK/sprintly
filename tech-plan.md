@@ -357,11 +357,13 @@ When a user drops a task:
 The List view displays tasks vertically, with their title, status,
 assignee, sprint, and dates.
 
-Users can open task details, edit supported fields inline, group tasks,
-sort tasks, and expand or collapse groups.
+Users can open task details, edit supported fields inline, and sort tasks.
 
 The Board and List use the same task data APIs. Neither includes task
-filtering controls.
+filtering controls. Sprint task lists are paginated by the API, use an
+allowlist of task sort fields with stable task-key/ID tie-breakers, and expose
+the same task fields as the Board. The Board/List switch keeps the sprint ID
+in the route so both views use the same selected sprint.
 
 ## 11. Global Task Search
 

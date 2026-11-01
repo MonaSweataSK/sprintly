@@ -78,9 +78,14 @@ without deleting the tasks.
 ## Tasks
 
 Authenticated members can create tasks in a sprint or the backlog through
-`POST /api/v1/tasks`. `GET /api/v1/tasks/backlog` lists backlog items,
-`GET /api/v1/sprints/:id/tasks` lists a sprint's active tasks, and
-`GET /api/v1/tasks/:taskKey` returns task details. Update a task with
+`POST /api/v1/tasks`. `GET /api/v1/tasks/backlog` lists backlog items.
+`GET /api/v1/sprints/:id/tasks` returns a paginated active task list and accepts
+`page` (default `1`), `pageSize` (default `20`, maximum `100`), `sortBy`
+(`taskKey`, `title`, `startDate`, `endDate`, `createdAt`, or `updatedAt`), and
+`sortOrder` (`asc` or `desc`). Results include sprint metadata, task rows, and
+pagination totals; deleted tasks are excluded, matching board visibility. Sorts
+use task key and ID as stable tie-breakers. `GET /api/v1/tasks/:taskKey` returns
+task details. Update a task with
 `PATCH /api/v1/tasks/:id`; `DELETE /api/v1/tasks/:id` moves it to the trash.
 Task keys are allocated from a PostgreSQL sequence starting at `TASK-101`;
 deleting a task never makes its key available again.

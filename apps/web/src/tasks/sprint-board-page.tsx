@@ -24,6 +24,7 @@ import { useMemo, useRef, useState, type MouseEvent } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { SprintViewSelector } from './sprint-view-selector'
 import {
   ApiError,
   updateTask,
@@ -388,6 +389,7 @@ export function SprintBoardPage() {
     onSettled: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: boardKey }),
+        queryClient.invalidateQueries({ queryKey: ['sprint-tasks', id] }),
         queryClient.invalidateQueries({ queryKey: ['tasks'] }),
         queryClient.invalidateQueries({ queryKey: ['sprints', id] }),
       ])
@@ -456,6 +458,7 @@ export function SprintBoardPage() {
           )}
         </div>
         <div className="flex flex-wrap gap-3">
+          <SprintViewSelector sprintId={board.sprint.id} value="board" />
           <label className="space-y-1.5 text-xs font-medium text-muted-foreground">
             Group by
             <select

@@ -5,12 +5,14 @@ import {
   addTaskDependency,
   getBacklogTasks,
   getSprintBoard,
+  getSprintTasks,
   getTask,
   getTaskDependencies,
   getTasks,
   removeTaskDependency,
   updateTask,
   type TaskInput,
+  type SprintTaskPageQuery,
 } from '@/lib/api'
 
 export function useTasks(sprintId?: string) {
@@ -32,6 +34,18 @@ export function useSprintBoard(sprintId: string) {
     queryKey: ['sprint-board', sprintId],
     queryFn: () => getSprintBoard(sprintId),
     enabled: Boolean(sprintId),
+  })
+}
+
+export function useSprintTaskPage(
+  sprintId: string,
+  query: SprintTaskPageQuery,
+) {
+  return useQuery({
+    queryKey: ['sprint-tasks', sprintId, query],
+    queryFn: () => getSprintTasks(sprintId, query),
+    enabled: Boolean(sprintId),
+    placeholderData: (previous) => previous,
   })
 }
 
@@ -57,6 +71,8 @@ function useInvalidateTasks() {
   return async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['tasks'] }),
+      queryClient.invalidateQueries({ queryKey: ['sprint-tasks'] }),
+      queryClient.invalidateQueries({ queryKey: ['sprint-board'] }),
       queryClient.invalidateQueries({ queryKey: ['sprints'] }),
     ])
   }

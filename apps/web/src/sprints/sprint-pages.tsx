@@ -3,7 +3,6 @@ import {
   ArrowLeft,
   CalendarDays,
   CheckCircle2,
-  Columns3,
   Clock3,
   LoaderCircle,
   Pencil,
@@ -21,6 +20,7 @@ import {
 } from 'react-router-dom'
 import { TeamSelector } from '@/components/selectors'
 import { SprintTaskList } from '@/tasks/task-pages'
+import { SprintViewSelector } from '@/tasks/sprint-view-selector'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -580,12 +580,7 @@ export function SprintDetailsPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
-          <Button asChild variant="outline">
-            <Link to={`/sprints/${sprint.id}/board`}>
-              <Columns3 aria-hidden="true" size={16} />
-              Open board
-            </Link>
-          </Button>
+          <SprintViewSelector sprintId={sprint.id} value="board" />
           <label className="space-y-1.5 text-xs font-medium text-muted-foreground">
             Status
             <select

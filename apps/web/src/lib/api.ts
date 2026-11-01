@@ -152,6 +152,32 @@ export interface SprintBoardTask extends Task {
   }[]
 }
 
+export type TaskSortField =
+  | 'taskKey'
+  | 'title'
+  | 'startDate'
+  | 'endDate'
+  | 'createdAt'
+  | 'updatedAt'
+
+export interface SprintTaskPage {
+  sprint: Pick<Sprint, 'id' | 'name' | 'status'>
+  tasks: Task[]
+  pagination: {
+    page: number
+    pageSize: number
+    total: number
+    totalPages: number
+  }
+}
+
+export interface SprintTaskPageQuery {
+  page: number
+  pageSize: number
+  sortBy: TaskSortField
+  sortOrder: 'asc' | 'desc'
+}
+
 export interface OtpRequestResponse {
   message: string
   expiresInSeconds: number
@@ -404,6 +430,21 @@ export async function getTasks(sprintId?: string): Promise<Task[]> {
 export async function getSprintBoard(sprintId: string): Promise<SprintBoard> {
   return apiRequest<SprintBoard>(
     `/sprints/${encodeURIComponent(sprintId)}/board`,
+  )
+}
+
+export async function getSprintTasks(
+  sprintId: string,
+  query: SprintTaskPageQuery,
+): Promise<SprintTaskPage> {
+  const search = new URLSearchParams({
+    page: String(query.page),
+    pageSize: String(query.pageSize),
+    sortBy: query.sortBy,
+    sortOrder: query.sortOrder,
+  })
+  return apiRequest<SprintTaskPage>(
+    `/sprints/${encodeURIComponent(sprintId)}/tasks?${search.toString()}`,
   )
 }
 

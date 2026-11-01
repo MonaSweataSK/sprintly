@@ -11,11 +11,17 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { ApiCookieAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiCookieAuth,
+  ApiOperation,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import type { AuthenticatedRequest } from '../auth/session-auth.guard.js';
 import { SessionAuthGuard } from '../auth/session-auth.guard.js';
 import { AddTaskDependencyDto } from './dto/add-task-dependency.dto.js';
 import { CreateTaskDto } from './dto/create-task.dto.js';
+import { ListSprintTasksQueryDto } from './dto/list-sprint-tasks-query.dto.js';
 import { UpdateTaskDto } from './dto/update-task.dto.js';
 import { TasksService } from './tasks.service.js';
 
@@ -96,9 +102,26 @@ export class TasksController {
   }
 
   @Get('sprints/:id/tasks')
-  @ApiOperation({ summary: 'List active tasks for a sprint' })
-  sprintTasks(@Param('id', ParseUUIDPipe) id: string) {
-    return this.tasks.list(id);
+  @ApiOperation({ summary: 'List paginated active tasks for a sprint' })
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
+  @ApiQuery({
+    name: 'pageSize',
+    required: false,
+    type: Number,
+    example: 20,
+    description: 'Maximum 100 tasks per page.',
+  })
+  @ApiQuery({
+    name: 'sortBy',
+    required: false,
+    enum: ['taskKey', 'title', 'startDate', 'endDate', 'createdAt', 'updatedAt'],
+  })
+  @ApiQuery({ name: 'sortOrder', required: false, enum: ['asc', 'desc'] })
+  sprintTasks(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: ListSprintTasksQueryDto,
+  ) {
+    return this.tasks.listSprintTasks(id, query);
   }
 
   @Get('sprints/:id/board')

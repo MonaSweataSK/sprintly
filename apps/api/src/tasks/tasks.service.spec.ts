@@ -57,6 +57,7 @@ describe('TasksService', () => {
     task: {
       findFirst: ReturnType<typeof vi.fn>;
       findMany: ReturnType<typeof vi.fn>;
+      count: ReturnType<typeof vi.fn>;
     };
     taskDependency: { findMany: ReturnType<typeof vi.fn> };
     $transaction: ReturnType<typeof vi.fn>;
@@ -91,6 +92,7 @@ describe('TasksService', () => {
       task: {
         findFirst: vi.fn().mockResolvedValue(task),
         findMany: vi.fn().mockResolvedValue([task]),
+        count: vi.fn().mockResolvedValue(1),
       },
       taskDependency: { findMany: vi.fn().mockResolvedValue([]) },
       $transaction: vi.fn(
@@ -178,6 +180,50 @@ describe('TasksService', () => {
         where: { sprintId: null, deletedAt: null },
       }),
     );
+  });
+
+  it('returns a stable, paginated list of active tasks for an existing sprint', async () => {
+    prisma.sprint.findUnique.mockResolvedValueOnce({
+      id: sprintId,
+      name: 'Sprint One',
+      status: 'ACTIVE',
+    });
+
+    const result = await service.listSprintTasks(sprintId, {
+      page: 2,
+      pageSize: 10,
+      sortBy: 'title',
+      sortOrder: 'desc',
+    });
+
+    expect(result).toEqual({
+      sprint: { id: sprintId, name: 'Sprint One', status: 'ACTIVE' },
+      tasks: [task],
+      pagination: { page: 2, pageSize: 10, total: 1, totalPages: 1 },
+    });
+    expect(prisma.task.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { sprintId, deletedAt: null },
+        orderBy: [{ title: 'desc' }, { taskKey: 'asc' }, { id: 'asc' }],
+        skip: 10,
+        take: 10,
+      }),
+    );
+    expect(prisma.task.count).toHaveBeenCalledWith({
+      where: { sprintId, deletedAt: null },
+    });
+  });
+
+  it('rejects paginated lists for a missing sprint', async () => {
+    await expect(
+      service.listSprintTasks(sprintId, {
+        page: 1,
+        pageSize: 20,
+        sortBy: 'taskKey',
+        sortOrder: 'asc',
+      }),
+    ).rejects.toThrow('Sprint not found.');
+    expect(prisma.task.findMany).not.toHaveBeenCalled();
   });
 
   it('returns team members with empty columns and outside-team assignees', async () => {

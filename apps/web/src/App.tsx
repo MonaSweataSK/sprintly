@@ -19,6 +19,7 @@ import { MembersPage, TeamsPage } from '@/admin/management-pages'
 import { SprintDashboardPage, SprintDetailsPage } from '@/sprints/sprint-pages'
 import { BacklogPage, TaskDetailsPage } from '@/tasks/task-pages'
 import { SprintBoardPage } from '@/tasks/sprint-board-page'
+import { SprintTaskListPage } from '@/tasks/sprint-task-list-page'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ToastProvider } from '@/components/ui/toast'
@@ -315,6 +316,7 @@ export default function App() {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/sprints" element={<SprintDashboardPage />} />
           <Route path="/sprints/:id/board" element={<SprintBoardPage />} />
+          <Route path="/sprints/:id/list" element={<SprintTaskListPage />} />
           <Route path="/sprints/:id" element={<SprintDetailsPage />} />
           <Route path="/backlog" element={<BacklogPage />} />
           <Route path="/tasks/:taskKey" element={<TaskDetailsPage />} />

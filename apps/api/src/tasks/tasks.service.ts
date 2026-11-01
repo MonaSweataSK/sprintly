@@ -9,6 +9,7 @@ import type { TaskStatus } from '@prisma/client';
 import type { AuthenticatedUser } from '../auth/auth.types.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { CreateTaskDto } from './dto/create-task.dto.js';
+import type { ListSprintTasksQueryDto } from './dto/list-sprint-tasks-query.dto.js';
 import type { UpdateTaskDto } from './dto/update-task.dto.js';
 
 const taskInclude = {
@@ -45,6 +46,41 @@ export class TasksService {
       include: taskInclude,
       orderBy: [{ createdAt: 'desc' }, { taskKey: 'asc' }],
     });
+  }
+
+  async listSprintTasks(sprintId: string, query: ListSprintTasksQueryDto) {
+    const sprint = await this.prisma.sprint.findUnique({
+      where: { id: sprintId },
+      select: { id: true, name: true, status: true },
+    });
+    if (!sprint) throw new NotFoundException('Sprint not found.');
+
+    const where = { sprintId, deletedAt: null };
+    const [total, tasks] = await Promise.all([
+      this.prisma.task.count({ where }),
+      this.prisma.task.findMany({
+        where,
+        include: taskInclude,
+        orderBy: [
+          { [query.sortBy]: query.sortOrder },
+          { taskKey: 'asc' },
+          { id: 'asc' },
+        ],
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+      }),
+    ]);
+
+    return {
+      sprint,
+      tasks,
+      pagination: {
+        page: query.page,
+        pageSize: query.pageSize,
+        total,
+        totalPages: Math.ceil(total / query.pageSize),
+      },
+    };
   }
 
   async getSprintBoard(sprintId: string) {
