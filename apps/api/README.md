@@ -18,6 +18,11 @@ and `OTP_HASH_SECRET` (at least 32 characters). For example, run
 `SMTP_HOST`, `SMTP_PORT`, and `SMTP_FROM`; configure both `SMTP_USER` and
 `SMTP_PASSWORD` when the provider requires authentication.
 
+For local development, create `apps/api/.env.local`. Start the app from the
+repository root with `npm run dev:local` to load `.env.local` before `.env`;
+matching values in `.env.local` take precedence. The file is git-ignored.
+Other commands, including production startup, load `.env` only.
+
 The initial administrator is created separately from public sign-in:
 
 1. Set `ADMIN_NAME` and `ADMIN_EMAIL` in `apps/api/.env`.

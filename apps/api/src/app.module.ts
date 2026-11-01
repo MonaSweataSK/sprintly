@@ -13,7 +13,12 @@ import { TasksModule } from './tasks/tasks.module.js';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath:
+        process.env.NODE_ENV === 'local' ? ['.env.local', '.env'] : '.env',
       validationSchema: Joi.object({
+        NODE_ENV: Joi.string()
+          .valid('development', 'local', 'production', 'test')
+          .default('development'),
         PORT: Joi.number().port().default(3000),
         FRONTEND_URL: Joi.string()
           .uri({ scheme: ['http', 'https'] })

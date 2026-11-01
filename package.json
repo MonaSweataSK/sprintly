@@ -7,6 +7,7 @@
   ],
   "scripts": {
     "dev": "concurrently -k -n API,WEB -c cyan,magenta \"npm run start:dev -w @sprintly/api\" \"npm run dev -w @sprintly/web\"",
+    "dev:local": "NODE_ENV=local concurrently -k -n API,WEB -c cyan,magenta \"npm run start:dev -w @sprintly/api\" \"npm run dev -w @sprintly/web\"",
     "build": "npm run build --workspaces",
     "test": "npm run test --workspace=@sprintly/api",
     "db:up": "docker compose up -d postgres",
